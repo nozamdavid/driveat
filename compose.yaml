@@ -1,0 +1,17 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_ATGALLERY_NSID_AUTHORITY: ${NEXT_PUBLIC_ATGALLERY_NSID_AUTHORITY:-am.noz.atgallery.alpha}
+        NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL: ${NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL:-}
+        NEXT_PUBLIC_ATPROTO_ALPHA_PDS: ${NEXT_PUBLIC_ATPROTO_ALPHA_PDS:-https://spaces-alpha.host.bsky.network}
+    image: dmarcosm/atgallery-web:latest
+    container_name: atgallery-web
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0

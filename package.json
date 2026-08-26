@@ -13,6 +13,7 @@
     "lint": "pnpm --filter @atgallery/web lint",
     "lexicons:materialize": "node --import tsx scripts/materialize-lexicons.ts am.noz.atgallery.alpha lexicons",
     "lexicons:publish": "node --import tsx packages/lexicons/scripts/publish.ts",
+    "users": "node --import tsx scripts/list-users.ts",
     "pretest": "pnpm --filter './packages/**' -r --if-present run build",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r --if-present run test"

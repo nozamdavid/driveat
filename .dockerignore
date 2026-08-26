@@ -1,0 +1,11 @@
+.git
+.gitignore
+.github
+.agents
+.gemini
+node_modules
+.next
+dist
+apps/android
+*.log
+.env*.local

@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "atgallery-media-gateway",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-20",
+  "durable_objects": {
+    "bindings": [
+      { "name": "MEDIA_REGISTRY", "class_name": "MediaRegistry" },
+      { "name": "SPACE_BROKER", "class_name": "SpaceCredentialBroker" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MediaRegistry", "SpaceCredentialBroker"] }
+  ],
+  "vars": {
+    "MAX_BLOB_BYTES": "26214400",
+    "SESSION_ISSUER": "atgallery-media-gateway",
+    "ALLOWED_ORIGINS": "http://127.0.0.1:3000,http://localhost:3000,https://atgallery.noz.am,https://atstorage.noz.am"
+  }
+}

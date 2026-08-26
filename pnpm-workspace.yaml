@@ -5,7 +5,9 @@ confirmModulesPurge: false
 allowBuilds:
   core-js: false
   esbuild: true
+  sharp: false
   unrs-resolver: true
+  workerd: true
 minimumReleaseAgeExclude:
   - '@next/env@16.3.2'
   - '@next/swc-darwin-arm64@16.3.2'
@@ -20,3 +22,6 @@ minimumReleaseAgeExclude:
   - '@next/eslint-plugin-next@16.3.2'
   - eslint-config-next@16.3.2
   - eslint@10.9.0
+  - '@cloudflare/workers-types@5.20260826.1'
+  - miniflare@5.20260825.0-alpha
+  - wrangler@4.126.0

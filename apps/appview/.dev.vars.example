@@ -1,0 +1,3 @@
+# Copy to .dev.vars. Never commit the real values.
+ATGALLERY_ADMIN_TOKEN=replace-with-a-long-random-value
+ATGALLERY_SESSION_SECRET=replace-with-at-least-32-random-bytes

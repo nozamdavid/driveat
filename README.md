@@ -9,7 +9,7 @@ Lexicon namespace selection and publication are specified in [the authority runb
 
 - `apps/web`: Next.js web application
 - `apps/android`: native Kotlin/Jetpack Compose Android photo-backup application
-- `apps/appview`: disposable public index service
+- `apps/appview`: experimental Cloudflare Worker AppView/media gateway for permissioned Space images
 - `packages/domain`: product rules independent of UI and protocol clients
 - `packages/atproto`: AT Protocol compatibility and transport boundaries
 - `packages/lexicons`: experimental schema identifiers and generated types
@@ -37,6 +37,12 @@ The web app implements OAuth through AT Protocol's localhost client. Without an 
 4. Enter a handle, DID, or PDS URL and approve the displayed request on the PDS.
 
 No client secret, app registration, or deployed metadata document is needed for this loopback flow. The PDS must support AT Protocol's optional localhost client exception. Browser credentials are stored by the official OAuth client in IndexedDB and are revoked when the user disconnects.
+
+When `NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL` is configured, the browser uses OAuth only to obtain a
+single-use delegation token. The Worker exchanges it for its own short-lived, DPoP-bound Space
+credential. Previews and explicit downloads then use opaque Worker media routes rather than PDS blob
+URLs. Existing sessions must disconnect and reconnect once to approve the required Space `read`
+permission.
 
 To exercise gallery permissions, set `NEXT_PUBLIC_ATGALLERY_NSID_AUTHORITY` to a controlled reverse-domain authority, restart the development server, disconnect any existing identity-only session, and reconnect. The generated Space type and collection Lexicons must be published under that authority before an authorization server can resolve and approve the request. After login, the UI performs a read-only `com.atproto.space.listSpaces` probe and discovers the user's personal Library Space. If none exists, the user may explicitly create a stable `library` Space. Creation uses an owner-only member-list policy and never runs automatically.
 

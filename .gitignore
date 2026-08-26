@@ -6,6 +6,7 @@ coverage/
 .env
 .env.*
 !.env.example
+.dev.vars
 *.tsbuildinfo
 .DS_Store
 apps/android/ios/Pods/

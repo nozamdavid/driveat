@@ -1,0 +1,19 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.personalLibrary",
+  "defs": {
+    "main": {
+      "type": "space",
+      "description": "An owner's private ATGallery media Library and album organization.",
+      "key": "literal:library",
+      "name": "ATGallery private Library",
+      "collections": [
+        "am.noz.atgallery.alpha.libraryMedia",
+        "am.noz.atgallery.alpha.libraryAlbum",
+        "am.noz.atgallery.alpha.libraryMembership",
+        "am.noz.atgallery.alpha.publicationJob",
+        "am.noz.atgallery.alpha.transferEvent"
+      ]
+    }
+  }
+}

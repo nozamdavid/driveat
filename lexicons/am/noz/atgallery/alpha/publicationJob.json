@@ -1,0 +1,74 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.publicationJob",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A resumable private state machine for publishing an immutable album snapshot.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "album",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "album": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Private Library album being published."
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 32,
+            "knownValues": [
+              "planned",
+              "uploading",
+              "writing",
+              "activating",
+              "verifying",
+              "complete",
+              "failed"
+            ]
+          },
+          "intendedSnapshot": {
+            "type": "unknown"
+          },
+          "publishedAlbum": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Stable public published-album record, when allocated."
+          },
+          "publishedSnapshot": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Public immutable snapshot record, when allocated."
+          },
+          "failureCode": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

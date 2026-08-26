@@ -1,0 +1,54 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.publishedAlbum",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "The stable public identity and active snapshot pointer for a published album.",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "title",
+          "currentSnapshot",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "title": {
+            "type": "string",
+            "minGraphemes": 1,
+            "maxGraphemes": 200
+          },
+          "description": {
+            "type": "string",
+            "maxGraphemes": 5000
+          },
+          "currentSnapshot": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "The active immutable album snapshot."
+          },
+          "coverMembership": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Published membership used as the cover."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

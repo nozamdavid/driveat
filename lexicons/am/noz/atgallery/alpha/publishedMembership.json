@@ -1,0 +1,65 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.publishedMembership",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An immutable public ordered placement of one published media version in a snapshot.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "snapshot",
+          "media",
+          "position",
+          "createdAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "snapshot": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Immutable public album snapshot."
+          },
+          "media": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Immutable public published-media record."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999
+          },
+          "caption": {
+            "type": "string",
+            "maxGraphemes": 5000
+          },
+          "altText": {
+            "type": "string",
+            "maxGraphemes": 2000
+          },
+          "decorative": {
+            "type": "boolean"
+          },
+          "contentWarnings": {
+            "type": "array",
+            "maxLength": 20,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

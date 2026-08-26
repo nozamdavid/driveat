@@ -1,0 +1,107 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.libraryMedia",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A private media original and its safe local preview.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "mediaKind",
+          "original",
+          "originalFilename",
+          "originalMime",
+          "originalSize",
+          "preview",
+          "createdAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "mediaKind": {
+            "type": "string",
+            "maxLength": 16,
+            "knownValues": [
+              "image",
+              "video"
+            ]
+          },
+          "original": {
+            "type": "blob",
+            "accept": [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "image/avif",
+              "video/mp4"
+            ],
+            "maxSize": 52428800
+          },
+          "originalFilename": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "originalMime": {
+            "type": "string",
+            "maxLength": 100,
+            "knownValues": [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "image/avif",
+              "video/mp4"
+            ]
+          },
+          "originalSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "preview": {
+            "type": "blob",
+            "accept": [
+              "image/webp"
+            ],
+            "maxSize": 1048576
+          },
+          "sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "durationMilliseconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60000
+          },
+          "extractedMetadata": {
+            "type": "unknown"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.libraryMembership",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A private many-to-many placement of one media item in one album.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "album",
+          "media",
+          "position",
+          "addedAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "album": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Private Library album record."
+          },
+          "media": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Private Library media record."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "captionOverride": {
+            "type": "string",
+            "maxGraphemes": 5000
+          },
+          "altTextOverride": {
+            "type": "string",
+            "maxGraphemes": 2000
+          },
+          "decorativeOverride": {
+            "type": "boolean"
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@atgallery/lexicons",
+  "version": "0.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --exclude 'dist/**'",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json"
+  },
+  "dependencies": {
+    "@atgallery/domain": "workspace:*",
+    "@atproto/lexicon": "0.0.0-spaces-alpha-20260818163953"
+  }
+}

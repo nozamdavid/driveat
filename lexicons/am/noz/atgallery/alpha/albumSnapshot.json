@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.albumSnapshot",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An immutable public publication boundary for one album version.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "album",
+          "itemCount",
+          "createdAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "album": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Stable public published-album record."
+          },
+          "itemCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

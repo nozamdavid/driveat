@@ -1,0 +1,108 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.publishedMedia",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An immutable, public, metadata-allowlisted media rendition.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "mediaKind",
+          "rendition",
+          "mime",
+          "size",
+          "createdAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "mediaKind": {
+            "type": "string",
+            "maxLength": 16,
+            "knownValues": [
+              "image",
+              "video"
+            ]
+          },
+          "rendition": {
+            "type": "blob",
+            "accept": [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "image/avif",
+              "video/mp4"
+            ],
+            "maxSize": 52428800
+          },
+          "preview": {
+            "type": "blob",
+            "accept": [
+              "image/webp"
+            ],
+            "maxSize": 1048576
+          },
+          "mime": {
+            "type": "string",
+            "maxLength": 100,
+            "knownValues": [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "image/avif",
+              "video/mp4"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "durationMilliseconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60000
+          },
+          "defaultCaption": {
+            "type": "string",
+            "maxGraphemes": 5000
+          },
+          "defaultAltText": {
+            "type": "string",
+            "maxGraphemes": 2000
+          },
+          "decorative": {
+            "type": "boolean"
+          },
+          "contentWarnings": {
+            "type": "array",
+            "maxLength": 20,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

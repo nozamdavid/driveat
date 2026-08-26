@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "skills": {
+    "liquid-glass-advanced": {
+      "source": "SohrabZ/liquid-glass-skills",
+      "sourceType": "github",
+      "skillPath": "liquid-glass-advanced/SKILL.md",
+      "computedHash": "b12a30aed738a2839861e14ecfa44c159b49dd81ff226a6e6bf9d0759efc879d"
+    },
+    "liquid-glass-best-practices": {
+      "source": "SohrabZ/liquid-glass-skills",
+      "sourceType": "github",
+      "skillPath": "liquid-glass-best-practices/SKILL.md",
+      "computedHash": "714072dcd01e72942b5f3d3cb540c3c0ef77bc87e1846bcd4ef2fb085a094e4e"
+    },
+    "liquid-glass-containers": {
+      "source": "SohrabZ/liquid-glass-skills",
+      "sourceType": "github",
+      "skillPath": "liquid-glass-containers/SKILL.md",
+      "computedHash": "8e9b88ec132b1fddb4a8236cb2a6ba23b6ea64866dde6fdd915f47c649cc7578"
+    },
+    "liquid-glass-controls": {
+      "source": "SohrabZ/liquid-glass-skills",
+      "sourceType": "github",
+      "skillPath": "liquid-glass-controls/SKILL.md",
+      "computedHash": "6478e28f0f53a4d5e0e905184f7177ad1ac882278c7c9dbf2da7020b2d1afac8"
+    },
+    "liquid-glass-foundations": {
+      "source": "SohrabZ/liquid-glass-skills",
+      "sourceType": "github",
+      "skillPath": "liquid-glass-foundations/SKILL.md",
+      "computedHash": "23a358d5e2290abc718297554b29c43d1fcc0ff3de02a7e5601b7a4a3fc71316"
+    },
+    "liquid-glass-reference": {
+      "source": "SohrabZ/liquid-glass-skills",
+      "sourceType": "github",
+      "skillPath": "liquid-glass-reference/SKILL.md",
+      "computedHash": "cd6facdeab54e8c27f70d459912663aef3a024ad61f9d5e4c481e9bdf8316898"
+    },
+    "liquid-glass-troubleshooting": {
+      "source": "SohrabZ/liquid-glass-skills",
+      "sourceType": "github",
+      "skillPath": "liquid-glass-troubleshooting/SKILL.md",
+      "computedHash": "620c6e401c156c5601e62a1f5da826e1db828e8402bf3b26bf41a9d3f6dd5dd2"
+    }
+  }
+}

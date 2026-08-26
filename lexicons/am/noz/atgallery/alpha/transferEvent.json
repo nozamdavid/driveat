@@ -1,0 +1,52 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.transferEvent",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An advisory immutable transfer event used for rolling client-side quotas.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "operation",
+          "logicalBytes",
+          "blobOperations",
+          "itemCount",
+          "createdAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "operation": {
+            "type": "string",
+            "maxLength": 16,
+            "knownValues": [
+              "ingest",
+              "publish"
+            ]
+          },
+          "logicalBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blobOperations": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "itemCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

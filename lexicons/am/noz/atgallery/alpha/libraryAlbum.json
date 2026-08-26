@@ -1,0 +1,59 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.libraryAlbum",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A private flat album in the owner's Library.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "title",
+          "sort",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "title": {
+            "type": "string",
+            "minGraphemes": 1,
+            "maxGraphemes": 200
+          },
+          "description": {
+            "type": "string",
+            "maxGraphemes": 5000
+          },
+          "sort": {
+            "type": "string",
+            "maxLength": 32,
+            "knownValues": [
+              "manual",
+              "capture-time",
+              "filename",
+              "added-time"
+            ]
+          },
+          "coverMembership": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "Private membership record used as this album's cover."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

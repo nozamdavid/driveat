@@ -1,0 +1,29 @@
+{
+  "name": "@atgallery/web",
+  "version": "0.0.0-alpha.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "eslint app next.config.ts",
+    "start": "next start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@atgallery/atproto": "workspace:*",
+    "@atgallery/domain": "workspace:*",
+    "@atgallery/lexicons": "workspace:*",
+    "@atproto/api": "0.0.0-spaces-alpha-20260818163953",
+    "@atproto/oauth-client-browser": "0.0.0-spaces-alpha-20260818163953",
+    "next": "16.3.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.2"
+  }
+}

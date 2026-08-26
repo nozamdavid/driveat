@@ -40,7 +40,7 @@ export default function OAuthCallbackPage() {
           <p className="oauth-error" role="alert">
             {error}
           </p>
-          <Link href="/">Return to ATGallery</Link>
+          <Link href="/">Return to AT Storage</Link>
         </>
       ) : (
         <p aria-live="polite">Verifying the response from your PDS.</p>

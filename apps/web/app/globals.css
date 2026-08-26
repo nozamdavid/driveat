@@ -65,7 +65,7 @@ select:focus-visible {
 }
 
 main {
-  width: var(--page);
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -80,25 +80,18 @@ main {
   border: 0;
 }
 
-main:has(.photo-app-shell) {
-  width: 100%;
-}
-
-main:has(.photo-app-shell) > .masthead,
-main:has(.photo-app-shell) > .intro,
-main:has(.photo-app-shell) > .policy,
-main:has(.photo-app-shell) > .build-status,
-main:has(.photo-app-shell) > footer {
-  display: none;
-}
-
-main:has(.photo-app-shell) > .account-workspace {
+.landing-screen {
+  width: min(64rem, calc(100vw - 6rem));
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   padding: 0;
-  border: 0;
 }
 
 .masthead {
-  min-height: 5rem;
+  min-height: 4.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -122,12 +115,18 @@ main:has(.photo-app-shell) > .account-workspace {
   text-transform: uppercase;
 }
 
-.intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 0.7fr);
-  gap: clamp(2rem, 8vw, 8rem);
-  padding: clamp(4rem, 11vw, 9rem) 0;
-  border-bottom: 1px solid var(--rule);
+.landing-hero {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(2rem, 4vw, 3.5rem);
+  padding: clamp(1.5rem, 3.5vh, 3.5rem) 0;
+  flex: 1;
+}
+
+.landing-intro {
+  max-width: 34rem;
+  flex: 1;
 }
 
 h1,
@@ -137,13 +136,12 @@ p {
 }
 
 h1 {
-  max-width: 15ch;
   margin-bottom: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(3rem, 7.5vw, 7.5rem);
+  font-size: clamp(2.2rem, 3.5vw, 3.6rem);
   font-weight: 500;
-  letter-spacing: -0.055em;
-  line-height: 0.94;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
   overflow-wrap: anywhere;
 }
 
@@ -155,10 +153,86 @@ h2 {
   line-height: 1;
 }
 
-.intro-copy {
-  align-self: end;
+.intro-description {
+  margin-top: 1.25rem;
+  color: var(--muted);
   font-size: 1.05rem;
   line-height: 1.55;
+}
+
+.privacy-notice {
+  margin-top: 1.25rem;
+  padding: 0.75rem 0.95rem;
+  border-left: 3px solid var(--rule);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: var(--paper-strong);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.privacy-notice strong {
+  color: var(--ink);
+}
+
+.privacy-notice p {
+  margin: 0;
+}
+
+.landing-login {
+  width: 100%;
+  max-width: 24rem;
+  flex-shrink: 0;
+  padding: clamp(1.25rem, 2vw, 1.85rem);
+  border: 1px solid var(--rule);
+  border-radius: 1rem;
+  background: #faf9f4;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 4%);
+}
+
+.landing-login .oauth-panel {
+  margin-top: 0;
+}
+
+.landing-footer {
+  min-height: 3.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.landing-footer p {
+  margin: 0;
+}
+
+.landing-footer a {
+  color: var(--focus);
+  text-decoration: none;
+}
+
+.landing-footer a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 860px) {
+  .landing-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2rem;
+    padding: 2rem 0;
+  }
+
+  .landing-intro {
+    max-width: 100%;
+  }
+
+  .landing-login {
+    max-width: 100%;
+  }
 }
 
 button {
@@ -180,15 +254,6 @@ button:disabled {
 
 .oauth-panel {
   margin-top: 1.5rem;
-}
-
-.account-workspace {
-  padding: 0 0 clamp(3rem, 7vw, 6rem);
-  border-bottom: 1px solid var(--rule);
-}
-
-.account-workspace > .oauth-panel:not(.authenticated-panel) {
-  max-width: 34rem;
 }
 
 .photo-app-shell {
@@ -623,6 +688,26 @@ button:disabled {
 .sidebar-storage span {
   color: var(--muted);
   font-size: 0.76rem;
+}
+
+.sidebar-privacy-notice {
+  margin-top: 1.5rem;
+  padding: 0.75rem 0.85rem;
+  border-left: 3px solid var(--rule);
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: var(--paper-strong);
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.sidebar-privacy-notice strong {
+  color: var(--ink);
+  display: inline;
+}
+
+.sidebar-privacy-notice p {
+  margin: 0;
 }
 
 .media-browser {

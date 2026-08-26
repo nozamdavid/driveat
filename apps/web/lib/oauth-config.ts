@@ -17,6 +17,7 @@ export type OAuthPermissionConfiguration =
   | (BaseOAuthPermissionConfiguration & Readonly<{ mode: "identity-only" }>)
   | (BaseOAuthPermissionConfiguration &
       Readonly<{
+        accountCollection: string;
         albumCollection: string;
         libraryMediaCollection: string;
         membershipCollection: string;
@@ -38,6 +39,7 @@ export function resolveOAuthPermissionConfiguration(
   const permissions = buildGalleryOAuthPermissions(nsids);
   return {
     mode: "gallery",
+    accountCollection: nsids.account,
     albumCollection: nsids.libraryAlbum,
     libraryMediaCollection: nsids.libraryMedia,
     membershipCollection: nsids.libraryMembership,
@@ -79,5 +81,12 @@ export function resolveOAuthClientId(
   scope = IDENTITY_OAUTH_SCOPE,
 ): string {
   const configured = configuredClientId?.trim();
-  return configured || buildLoopbackClientId(location, scope);
+  if (configured) {
+    return configured;
+  }
+  if (isLoopbackHostname(location.hostname)) {
+    return buildLoopbackClientId(location, scope);
+  }
+  const port = location.port ? `:${location.port}` : "";
+  return `${location.protocol}//${location.hostname}${port}/oauth-client-metadata.json`;
 }

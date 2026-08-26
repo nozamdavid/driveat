@@ -9,6 +9,7 @@ import {
 } from "./oauth-permissions.js";
 
 const nsids: GalleryPermissionNsids = {
+  account: "com.example.atgallery.alpha.account",
   albumSnapshot: "com.example.atgallery.alpha.albumSnapshot",
   libraryAlbum: "com.example.atgallery.alpha.libraryAlbum",
   libraryMedia: "com.example.atgallery.alpha.libraryMedia",
@@ -25,6 +26,7 @@ describe("buildGalleryOAuthPermissions", () => {
   it("requests only explicit public collections and media MIME types", () => {
     const permissions = buildGalleryOAuthPermissions(nsids);
 
+    expect(permissions.scopes).toContain("repo:com.example.atgallery.alpha.account");
     expect(permissions.scopes).toContain("repo:com.example.atgallery.alpha.publishedAlbum");
     expect(permissions.scopes).not.toContain("repo:*");
     expect(permissions.scope).not.toContain("transition:generic");
@@ -38,8 +40,8 @@ describe("buildGalleryOAuthPermissions", () => {
     const { spaceScope } = buildGalleryOAuthPermissions(nsids);
 
     expect(spaceScope).toMatch(/^space:com\.example\.atgallery\.alpha\.personalLibrary\?/);
+    expect(spaceScope).toContain("action=read");
     expect(spaceScope).toContain("action=read_self");
-    expect(spaceScope).not.toContain("action=read&");
     expect(spaceScope).toContain(
       "collection=com.example.atgallery.alpha.libraryMedia",
     );

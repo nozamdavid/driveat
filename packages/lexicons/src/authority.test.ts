@@ -24,7 +24,7 @@ describe("createLexiconAuthorityPlan", () => {
     expect(plan.namespaceDomain).toBe("alpha.example.com");
     expect(plan.dnsRecordName).toBe("_lexicon.alpha.example.com");
     expect(plan.dnsTxtValue).toBe("did=did:plc:abc123");
-    expect(plan.recordKeys).toHaveLength(10);
+    expect(plan.recordKeys).toHaveLength(11);
     expect(plan.recordKeys).toContain("com.example.alpha.personalLibrary");
   });
 

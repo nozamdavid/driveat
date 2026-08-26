@@ -9,15 +9,22 @@ import {
 } from "@atgallery/atproto";
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
+import Link from "next/link";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { errorMessage } from "../../lib/error-message";
 import { clearLibrarySnapshots } from "../../lib/library-snapshot";
 import {
+  connectMediaGateway,
+  resolveMediaGatewayUrl,
+  type MediaGatewayAccess,
+} from "../../lib/media-gateway";
+import {
   getOAuthClient,
   initializeOAuth,
   oauthPermissionConfiguration,
 } from "../../lib/oauth-client";
+import { ensureAccountRecord } from "../../lib/account-record";
 import { ATGALLERY_ALPHA_PDS } from "../../lib/oauth-config";
 import { clearPreviewCache } from "../../lib/preview-cache";
 import { PrivateLibrary } from "./private-library";
@@ -49,7 +56,7 @@ function personalSpaceMessage(space: PersonalSpaceView): string {
     case "missing":
       return "No personal Library Space exists yet. Create it to start storing private gallery records.";
     case "conflict":
-      return `Found ${space.uris.length} personal Library Spaces. ATGallery will not choose one automatically.`;
+      return `Found ${space.uris.length} personal Library Spaces. AT Storage will not choose one automatically.`;
     case "creating":
       return "Creating your personal Library Space…";
     case "create-failed":
@@ -71,12 +78,14 @@ function personalSpaceMessage(space: PersonalSpaceView): string {
 
 export function OAuthPanel() {
   const [identifier, setIdentifier] = useState(
-    process.env.NEXT_PUBLIC_ATPROTO_ALPHA_PDS ?? ATGALLERY_ALPHA_PDS,
+    process.env.NEXT_PUBLIC_ATPROTO_ALPHA_PDS?.trim() || ATGALLERY_ALPHA_PDS,
   );
   const [view, setView] = useState<ViewState>({ status: "loading" });
   const [submitting, setSubmitting] = useState(false);
   const [personalSpace, setPersonalSpace] = useState<PersonalSpaceView>();
   const [sessionDiagnostics, setSessionDiagnostics] = useState<SessionDiagnostics>();
+  const [mediaGatewayAccess, setMediaGatewayAccess] = useState<MediaGatewayAccess>();
+  const [gatewayError, setGatewayError] = useState<string>();
 
   useEffect(() => {
     let active = true;
@@ -115,6 +124,7 @@ export function OAuthPanel() {
         });
       }
     }).catch(() => undefined);
+
     void probePersonalSpaceCapability(
       view.session.fetchHandler.bind(view.session),
       permissionConfiguration.personalSpaceType,
@@ -128,6 +138,11 @@ export function OAuthPanel() {
         }
 
         const agent = new Agent(view.session);
+        void ensureAccountRecord(
+          agent.com.atproto.repo,
+          permissionConfiguration.accountCollection,
+          view.session.did,
+        );
         const discovery = await discoverPersonalLibrarySpace(
           agent.com.atproto.space,
           permissionConfiguration.personalSpaceType,
@@ -148,6 +163,62 @@ export function OAuthPanel() {
     oauthPermissionConfiguration.mode === "identity-only"
       ? { status: "not-configured" }
       : (personalSpace ?? { status: "checking" });
+
+  useEffect(() => {
+    if (
+      view.status !== "authenticated" ||
+      displayedPersonalSpace.status !== "ready" ||
+      oauthPermissionConfiguration.mode !== "gallery"
+    ) {
+      setMediaGatewayAccess(undefined);
+      setGatewayError(undefined);
+      return;
+    }
+
+    let gatewayUrl: string | undefined;
+    try {
+      gatewayUrl = resolveMediaGatewayUrl(
+        process.env.NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL,
+      );
+    } catch (urlErr) {
+      setMediaGatewayAccess(undefined);
+      setGatewayError(errorMessage(urlErr, "Invalid media gateway URL."));
+      return;
+    }
+
+    if (!gatewayUrl) {
+      setMediaGatewayAccess(undefined);
+      setGatewayError("NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL is not configured.");
+      return;
+    }
+
+    let active = true;
+    setGatewayError(undefined);
+    void connectMediaGateway({
+      baseUrl: gatewayUrl,
+      delegationClient: view.session.fetchHandler.bind(view.session),
+      repo: view.session.did,
+      space: displayedPersonalSpace.uri,
+    })
+      .then((access) => {
+        if (active) {
+          setMediaGatewayAccess(access);
+          setGatewayError(undefined);
+        }
+      })
+      .catch((error: unknown) => {
+        const message = errorMessage(error, "Failed to connect to media gateway.");
+        console.error("Failed to connect to media gateway:", error);
+        if (active) {
+          setMediaGatewayAccess(undefined);
+          setGatewayError(message);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [displayedPersonalSpace, view]);
 
   async function createLibrarySpace() {
     if (
@@ -231,7 +302,7 @@ export function OAuthPanel() {
           <div className="photo-app-brand">
             <span className="photo-app-mark" aria-hidden="true">A</span>
             <div>
-              <strong>ATGallery</strong>
+              <strong>AT Storage</strong>
               <span>Private Library</span>
             </div>
           </div>
@@ -270,11 +341,18 @@ export function OAuthPanel() {
             </dl>
           </details>
         ) : null}
+        {gatewayError ? (
+          <section className="library-setup">
+            <p className="status-line">Media Gateway</p>
+            <p className="capability-status" data-status="unavailable">{gatewayError}</p>
+          </section>
+        ) : null}
         {displayedPersonalSpace.status === "ready" &&
         oauthPermissionConfiguration.mode === "gallery" ? (
           <PrivateLibrary
             albumCollection={oauthPermissionConfiguration.albumCollection}
             libraryMediaCollection={oauthPermissionConfiguration.libraryMediaCollection}
+            mediaGatewayAccess={mediaGatewayAccess}
             membershipCollection={oauthPermissionConfiguration.membershipCollection}
             session={view.session}
             spaceUri={displayedPersonalSpace.uri}
@@ -286,34 +364,72 @@ export function OAuthPanel() {
   }
 
   return (
-    <form className="oauth-panel" onSubmit={signIn}>
-      <label htmlFor="atproto-identifier">Handle, DID, or alpha PDS URL</label>
-      <input
-        id="atproto-identifier"
-        name="identifier"
-        type="text"
-        value={identifier}
-        autoCapitalize="none"
-        autoComplete="username"
-        autoCorrect="off"
-        placeholder="alice.example or https://pds.example"
-        required
-        disabled={submitting}
-        onChange={(event) => setIdentifier(event.target.value)}
-      />
-      <button type="submit" disabled={submitting}>
-        {submitting ? "Opening your PDS…" : "Connect with AT Protocol"}
-      </button>
-      {view.status === "error" ? (
-        <p className="oauth-error" role="alert">
-          {view.message}
-        </p>
-      ) : null}
-      <p className="fine-print">
-        {oauthPermissionConfiguration.mode === "gallery"
-          ? "The request is limited to ATGallery collections, accepted media blobs, and your personal Space."
-          : "Local alpha requests identity access only. Sign-in and consent happen on your PDS."}
-      </p>
-    </form>
+    <div className="landing-screen">
+      <header className="masthead">
+        <Link className="wordmark" href="/" aria-label="AT Storage home">
+          AT Storage
+        </Link>
+        <span className="alpha-badge">experimental alpha</span>
+      </header>
+
+      <div className="landing-hero">
+        <section className="landing-intro" aria-labelledby="intro-title">
+          <p className="status-line">ALPHA</p>
+          <h1 id="intro-title">
+            Your files. Your account.
+          </h1>
+          <p className="intro-description">
+            AT Storage keeps exact media originals in an owner-only permissioned Space, organizes
+            them into albums. Other file types will be added soon™
+          </p>
+          <div className="privacy-notice" role="note">
+            <p>
+              <strong>⚠️ Note on encryption:</strong> Spaces provide access control rather than confidentiality.
+              Data in a Space is readable by any user or application granted access to that Space and is not encrypted.
+              We may add encryption ourselves in the future.
+            </p>
+          </div>
+        </section>
+
+        <section className="landing-login" aria-label="AT Protocol sign in">
+          <form className="oauth-panel" onSubmit={signIn}>
+            <label htmlFor="atproto-identifier">Handle, DID, or alpha PDS URL</label>
+            <input
+              id="atproto-identifier"
+              name="identifier"
+              type="text"
+              value={identifier}
+              autoCapitalize="none"
+              autoComplete="username"
+              autoCorrect="off"
+              placeholder="alice.example or https://pds.example"
+              required
+              disabled={submitting}
+              onChange={(event) => setIdentifier(event.target.value)}
+            />
+            <button type="submit" disabled={submitting}>
+              {submitting ? "Opening your PDS…" : "Connect with AT Protocol"}
+            </button>
+            {view.status === "error" ? (
+              <p className="oauth-error" role="alert">
+                {view.message}
+              </p>
+            ) : null}
+            <p className="fine-print">
+              {oauthPermissionConfiguration.mode === "gallery"
+                ? "The request is limited to AT Storage collections, accepted media blobs, and your personal Space."
+                : "Local alpha requests identity access only. Sign-in and consent happen on your PDS."}
+            </p>
+          </form>
+        </section>
+      </div>
+
+      <footer className="landing-footer">
+        <p>Experimental software. Do not rely on alpha data durability.</p>
+        <a href="https://atproto.com" target="_blank" rel="noreferrer">
+          AT Protocol documentation
+        </a>
+      </footer>
+    </div>
   );
 }

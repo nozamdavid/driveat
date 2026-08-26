@@ -12,6 +12,7 @@ export const GALLERY_BLOB_MIME_TYPES = [
 ] as const;
 
 export type GalleryPermissionNsids = Readonly<{
+  account: string;
   albumSnapshot: string;
   libraryAlbum: string;
   libraryMedia: string;
@@ -47,6 +48,7 @@ export function buildGalleryOAuthPermissions(
   const blobScope = `blob?${blobParameters.toString()}`;
 
   const publicCollections = [
+    nsids.account,
     nsids.publishedAlbum,
     nsids.albumSnapshot,
     nsids.publishedMedia,
@@ -64,7 +66,7 @@ export function buildGalleryOAuthPermissions(
   ]) {
     spaceParameters.append("collection", collection);
   }
-  for (const action of ["read_self", "create", "update", "delete"]) {
+  for (const action of ["read", "read_self", "create", "update", "delete"]) {
     spaceParameters.append("action", action);
   }
   for (const operation of ["create", "update", "delete"]) {

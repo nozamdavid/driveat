@@ -1,4 +1,5 @@
 export type ExperimentalNsids = Readonly<{
+  account: string;
   albumSnapshot: string;
   libraryAlbum: string;
   libraryMedia: string;
@@ -23,7 +24,9 @@ export function createExperimentalNsids(authority: string): ExperimentalNsids {
   }
 
   const prefix = authority;
+  const accountPrefix = prefix.endsWith(".alpha") ? prefix.slice(0, -6) : prefix;
   return {
+    account: `${accountPrefix}.account`,
     albumSnapshot: `${prefix}.albumSnapshot`,
     libraryAlbum: `${prefix}.libraryAlbum`,
     libraryMedia: `${prefix}.libraryMedia`,

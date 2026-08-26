@@ -246,8 +246,21 @@ export function createAlphaLexiconSchemas(namespaceAuthority: string): readonly 
     },
   );
 
+  const account = record(
+    nsids.account,
+    "A public self-declaration record for an account using ATGallery.",
+    ["formatVersion", "createdAt"],
+    {
+      formatVersion: formatVersion(),
+      createdAt: datetime(),
+      client: { type: "string", maxLength: 100 },
+    },
+    "literal:self",
+  );
+
   // Keep deterministic dependency order for review and publication tooling.
   return [
+    account,
     personalLibrary,
     libraryMedia,
     libraryAlbum,

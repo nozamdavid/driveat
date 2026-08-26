@@ -43,6 +43,26 @@ describe("resolveOAuthClientId", () => {
       }),
     ).toBe("https://gallery.example/oauth-client-metadata.json");
   });
+
+  it("derives the hosted client id metadata URL when running on a hosted domain", () => {
+    expect(
+      resolveOAuthClientId(undefined, {
+        hostname: "atstorage.noz.am",
+        port: "",
+        protocol: "https:",
+      }),
+    ).toBe("https://atstorage.noz.am/oauth-client-metadata.json");
+  });
+
+  it("uses the loopback client id on localhost when unset or empty", () => {
+    expect(
+      resolveOAuthClientId("", {
+        hostname: "localhost",
+        port: "3000",
+        protocol: "http:",
+      }),
+    ).toContain("http://localhost?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Foauth%2Fcallback");
+  });
 });
 
 describe("resolveOAuthPermissionConfiguration", () => {
@@ -59,6 +79,8 @@ describe("resolveOAuthPermissionConfiguration", () => {
 
     expect(configuration.mode).toBe("gallery");
     if (configuration.mode !== "gallery") throw new Error("Expected gallery configuration.");
+    expect(configuration.accountCollection).toBe("com.example.atgallery.account");
+    expect(configuration.scope).toContain("repo:com.example.atgallery.account");
     expect(configuration.scope).toContain("repo:com.example.atgallery.alpha.publishedAlbum");
     expect(configuration.scope).toContain("space:com.example.atgallery.alpha.personalLibrary");
     expect(configuration.personalSpaceType).toBe(

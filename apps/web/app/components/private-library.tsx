@@ -21,12 +21,13 @@ import {
 } from "../../lib/library-snapshot";
 import { pruneSelectedUris, toggleSelectedUri } from "../../lib/media-selection";
 import { clampMenuPosition, type Point, type Size } from "../../lib/menu-position";
-import { authenticatedSpaceBlobUrl } from "../../lib/private-image";
+import { fetchGatewayBlob, type MediaGatewayAccess } from "../../lib/media-gateway";
 import {
   cachePreviewBlob,
   purgeLegacyPreviewDataUrls,
   readCachedPreview,
 } from "../../lib/preview-cache";
+import { useInView } from "../../lib/use-in-view";
 import {
   groupMediaByDay,
   findDuplicateMedia,
@@ -46,6 +47,7 @@ import { PrivateImageUpload } from "./private-image-upload";
 type Props = Readonly<{
   albumCollection: string;
   libraryMediaCollection: string;
+  mediaGatewayAccess?: MediaGatewayAccess | undefined;
   membershipCollection: string;
   session: OAuthSession;
   spaceUri: string;
@@ -107,22 +109,20 @@ function formatRecoveryTime(date: Date): string {
 // only ever fetched for explicit downloads.
 function PrivatePreviewImage({
   className,
+  eager = false,
   media,
-  pdsUrl,
-  repo,
-  session,
-  spaceUri,
+  mediaGatewayAccess,
 }: Readonly<{
-  className?: string;
+  className?: string | undefined;
+  eager?: boolean | undefined;
   media: LibraryMedia;
-  pdsUrl: string;
-  repo: string;
-  session: OAuthSession;
-  spaceUri: string;
+  mediaGatewayAccess?: MediaGatewayAccess | undefined;
 }>) {
   // Cache hits render instantly from IndexedDB; misses fetch once and backfill the cache.
   const [source, setSource] = useState<string>();
   const [failed, setFailed] = useState(false);
+  const [targetRef, inView] = useInView({ disabled: eager || !!source });
+  const shouldFetch = eager || inView;
 
   useEffect(() => {
     let active = true;
@@ -141,9 +141,14 @@ function PrivatePreviewImage({
           show(cached);
           return;
         }
-        const url = authenticatedSpaceBlobUrl(pdsUrl, spaceUri, repo, media.previewCid);
-        const response = await session.fetchHandler(url);
-        if (!response.ok) throw new Error(`Preview request returned HTTP ${response.status}.`);
+        if (!shouldFetch) {
+          return;
+        }
+        if (!mediaGatewayAccess) {
+          throw new Error("Media gateway is not connected.");
+        }
+        const response = await fetchGatewayBlob(mediaGatewayAccess, media.previewCid, "image/webp");
+        if (!response.ok) throw new Error(`Gateway returned HTTP ${response.status}`);
         const blob = await response.blob();
         show(blob);
         void cachePreviewBlob(media.previewCid, blob);
@@ -156,7 +161,7 @@ function PrivatePreviewImage({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [media.previewCid, pdsUrl, repo, session, spaceUri]);
+  }, [media.previewCid, mediaGatewayAccess, shouldFetch]);
 
   return source ? (
     // The private filename is the best available label until editable alt text lands.
@@ -164,6 +169,7 @@ function PrivatePreviewImage({
     <img className={className} src={source} alt={media.filename} />
   ) : (
     <div
+      ref={targetRef}
       className={className ?? "preview-placeholder"}
       aria-label={
         failed
@@ -190,32 +196,120 @@ function metadataEntries(media: LibraryMedia): readonly [string, string][] {
   return [...basic, ...(media.sha256 ? [["SHA-256", media.sha256] as [string, string]] : []), ...extracted];
 }
 
+function PrivateViewerImage({
+  className,
+  media,
+  mediaGatewayAccess,
+}: Readonly<{
+  className?: string | undefined;
+  media: LibraryMedia;
+  mediaGatewayAccess?: MediaGatewayAccess | undefined;
+}>) {
+  const [source, setSource] = useState<string>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | undefined;
+    let fullObjectUrl: string | undefined;
+
+    const show = (blob: Blob, isFull: boolean) => {
+      if (!active) return;
+      const url = URL.createObjectURL(blob);
+      if (isFull) {
+        fullObjectUrl = url;
+        setSource(url);
+      } else {
+        objectUrl = url;
+        setSource((prev) => (fullObjectUrl ? prev : url));
+      }
+    };
+
+    void (async () => {
+      try {
+        // Step 1: Render cached preview immediately if available
+        const cached = await readCachedPreview(media.previewCid);
+        if (cached && active) {
+          show(cached, false);
+        }
+
+        if (!mediaGatewayAccess) {
+          return;
+        }
+
+        // Step 2: If preview was not cached, fetch preview
+        if (!cached) {
+          const previewResp = await fetchGatewayBlob(
+            mediaGatewayAccess,
+            media.previewCid,
+            "image/webp",
+          );
+          if (previewResp.ok && active) {
+            const previewBlob = await previewResp.blob();
+            show(previewBlob, false);
+            void cachePreviewBlob(media.previewCid, previewBlob);
+          }
+        }
+
+        // Step 3: Fetch full-resolution original image
+        if (media.originalCid) {
+          const fullResp = await fetchGatewayBlob(
+            mediaGatewayAccess,
+            media.originalCid,
+            media.mime,
+          );
+          if (fullResp.ok && active) {
+            const fullBlob = await fullResp.blob();
+            show(fullBlob, true);
+          }
+        }
+      } catch {
+        if (active) setFailed(true);
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (fullObjectUrl) URL.revokeObjectURL(fullObjectUrl);
+    };
+  }, [media.previewCid, media.originalCid, media.mime, mediaGatewayAccess]);
+
+  return source ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className={className} src={source} alt={media.filename} />
+  ) : (
+    <div
+      className={className ?? "preview-placeholder"}
+      aria-label={
+        failed
+          ? `Image unavailable for ${media.filename}`
+          : `Loading photo for ${media.filename}`
+      }
+    />
+  );
+}
+
 function PhotoViewer({
   activeMedia,
   activeMediaIndex,
+  mediaGatewayAccess,
   mutating,
-  orderedMedia,
-  pdsUrl,
-  repo,
-  session,
-  spaceUri,
   onClose,
   onDelete,
   onDownload,
   onNavigate,
+  orderedMedia,
 }: Readonly<{
   activeMedia: LibraryMedia;
   activeMediaIndex: number;
+  mediaGatewayAccess?: MediaGatewayAccess | undefined;
   mutating: boolean;
-  orderedMedia: readonly LibraryMedia[];
-  pdsUrl: string;
-  repo: string;
-  session: OAuthSession;
-  spaceUri: string;
   onClose: () => void;
   onDelete: (media: LibraryMedia) => void;
   onDownload: (media: LibraryMedia) => void;
-  onNavigate: (uri: string | undefined) => void;
+  onNavigate: (uri?: string) => void;
+  orderedMedia: readonly LibraryMedia[];
 }>) {
   const [viewerMenuOpen, setViewerMenuOpen] = useState(false);
   const [viewerInfoOpen, setViewerInfoOpen] = useState(false);
@@ -237,6 +331,35 @@ function PhotoViewer({
     window.addEventListener("keydown", closeViewerOnKey);
     return () => window.removeEventListener("keydown", closeViewerOnKey);
   }, [activeMediaIndex, onClose, onNavigate, orderedMedia]);
+
+  // Lazy prefetch adjacent (previous & next) media for instant navigation
+  useEffect(() => {
+    if (!mediaGatewayAccess) return;
+    const prevMedia = activeMediaIndex > 0 ? orderedMedia[activeMediaIndex - 1] : undefined;
+    const nextMedia =
+      activeMediaIndex < orderedMedia.length - 1 ? orderedMedia[activeMediaIndex + 1] : undefined;
+    const adjacent = [nextMedia, prevMedia].filter((m): m is LibraryMedia => !!m);
+
+    for (const m of adjacent) {
+      void (async () => {
+        try {
+          const cached = await readCachedPreview(m.previewCid);
+          if (!cached) {
+            const resp = await fetchGatewayBlob(mediaGatewayAccess, m.previewCid, "image/webp");
+            if (resp.ok) {
+              const blob = await resp.blob();
+              void cachePreviewBlob(m.previewCid, blob);
+            }
+          }
+          if (m.originalCid) {
+            await fetchGatewayBlob(mediaGatewayAccess, m.originalCid, m.mime);
+          }
+        } catch {
+          // Best-effort prefetch
+        }
+      })();
+    }
+  }, [activeMediaIndex, mediaGatewayAccess, orderedMedia]);
 
   return (
     <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={activeMedia.filename}>
@@ -288,13 +411,10 @@ function PhotoViewer({
       >
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" /></svg>
       </button>
-      <PrivatePreviewImage
+      <PrivateViewerImage
         className="photo-viewer-image"
         media={activeMedia}
-        pdsUrl={pdsUrl}
-        repo={repo}
-        session={session}
-        spaceUri={spaceUri}
+        mediaGatewayAccess={mediaGatewayAccess}
       />
       <button
         type="button"
@@ -610,11 +730,8 @@ function DuplicateReviewDialog({
   pair,
   index,
   count,
+  mediaGatewayAccess,
   mutating,
-  pdsUrl,
-  repo,
-  session,
-  spaceUri,
   onCancel,
   onDeleteDuplicate,
   onKeepBoth,
@@ -622,11 +739,8 @@ function DuplicateReviewDialog({
   pair: DuplicateMediaGroup;
   index: number;
   count: number;
+  mediaGatewayAccess?: MediaGatewayAccess | undefined;
   mutating: boolean;
-  pdsUrl: string;
-  repo: string;
-  session: OAuthSession;
-  spaceUri: string;
   onCancel: () => void;
   onDeleteDuplicate: () => void;
   onKeepBoth: () => void;
@@ -651,7 +765,11 @@ function DuplicateReviewDialog({
             <section className="duplicate-side" key={media.uri}>
               <span>{label}</span>
               <div className="duplicate-preview">
-                <PrivatePreviewImage media={media} pdsUrl={pdsUrl} repo={repo} session={session} spaceUri={spaceUri} />
+                <PrivatePreviewImage
+                  eager
+                  media={media}
+                  mediaGatewayAccess={mediaGatewayAccess}
+                />
               </div>
               <strong title={media.filename}>{media.filename}</strong>
             </section>
@@ -679,6 +797,7 @@ function DuplicateReviewDialog({
 export function PrivateLibrary({
   albumCollection,
   libraryMediaCollection,
+  mediaGatewayAccess,
   membershipCollection,
   session,
   spaceUri,
@@ -1116,11 +1235,12 @@ export function PrivateLibrary({
   }
 
   async function downloadMedia(media: LibraryMedia) {
-    if (!media.originalCid || !pdsUrl) return;
+    if (!media.originalCid) return;
     try {
-      const response = await session.fetchHandler(
-        authenticatedSpaceBlobUrl(pdsUrl, spaceUri, session.did, media.originalCid),
-      );
+      if (!mediaGatewayAccess) {
+        throw new Error("Media gateway is not connected.");
+      }
+      const response = await fetchGatewayBlob(mediaGatewayAccess, media.originalCid, media.mime);
       if (!response.ok) throw new Error(`Download request returned HTTP ${response.status}.`);
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
@@ -1137,7 +1257,10 @@ export function PrivateLibrary({
     <section className="library-workspace" aria-labelledby="library-title">
       <div className="library-heading">
         <div>
-          <p className="status-line">Private Space · {library.media.length} items</p>
+          <p className="status-line">
+            Private Space · {library.media.length} items
+            {mediaGatewayAccess ? " · Media Gateway connected" : ""}
+          </p>
           <h2 id="library-title">Photos</h2>
         </div>
         <div className="library-controls">
@@ -1235,6 +1358,13 @@ export function PrivateLibrary({
             <strong>{formatBytes(libraryStorageBytes)}</strong>
             <span>{library.media.length} items</span>
           </section>
+          <div className="sidebar-privacy-notice" role="note">
+            <p>
+              <strong>⚠️ Note on encryption:</strong> Spaces provide access control rather than confidentiality.
+              Data in a Space is readable by any user or application granted access to that Space and is not encrypted.
+              We may add encryption ourselves in the future.
+            </p>
+          </div>
         </aside>
 
         <div className="media-browser">
@@ -1288,13 +1418,10 @@ export function PrivateLibrary({
                         selectionActive ? toggleMediaSelection(item.uri) : openContextMenu(event, item)
                       }
                     >
-                    {pdsUrl ? (
+                    {mediaGatewayAccess ? (
                       <PrivatePreviewImage
                         media={item}
-                        pdsUrl={pdsUrl}
-                        repo={session.did}
-                        session={session}
-                        spaceUri={spaceUri}
+                        mediaGatewayAccess={mediaGatewayAccess}
                       />
                     ) : null}
                     </button>
@@ -1327,16 +1454,13 @@ export function PrivateLibrary({
           </div>
         </div>
       </div>
-      {activeMedia && pdsUrl ? (
+      {activeMedia ? (
         <PhotoViewer
           activeMedia={activeMedia}
           activeMediaIndex={activeMediaIndex}
+          mediaGatewayAccess={mediaGatewayAccess}
           mutating={mutating}
           orderedMedia={orderedMedia}
-          pdsUrl={pdsUrl}
-          repo={session.did}
-          session={session}
-          spaceUri={spaceUri}
           onClose={closeViewer}
           onDelete={(media) => setPendingDeleteUris([media.uri])}
           onDownload={(media) => void downloadMedia(media)}
@@ -1397,16 +1521,13 @@ export function PrivateLibrary({
           onReview={startDuplicateReview}
         />
       ) : null}
-      {duplicateReviewPair && duplicateReviewPairs && pdsUrl ? (
+      {duplicateReviewPair && duplicateReviewPairs ? (
         <DuplicateReviewDialog
           pair={duplicateReviewPair}
           index={duplicateReviewIndex}
           count={duplicateReviewPairs.length}
+          mediaGatewayAccess={mediaGatewayAccess}
           mutating={mutating}
-          pdsUrl={pdsUrl}
-          repo={session.did}
-          session={session}
-          spaceUri={spaceUri}
           onCancel={() => {
             setDuplicateReviewPairs(undefined);
             setDuplicateReviewIndex(0);

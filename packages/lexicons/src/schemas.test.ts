@@ -51,13 +51,13 @@ describe("createAlphaLexiconSchemas", () => {
     const lexicons = new Lexicons(schemas);
 
     expect(schemas.map((schema) => schema.id).sort()).toEqual(Object.values(nsids).sort());
-    expect(Array.from(lexicons)).toHaveLength(10);
+    expect(Array.from(lexicons)).toHaveLength(11);
   });
 
   it("declares the private Space consent name and exact private collections", () => {
     const nsids = createExperimentalNsids("com.example.atgallery.alpha");
     const schemas = createAlphaLexiconSchemas("com.example.atgallery.alpha");
-    const space = schemas[0]!;
+    const space = schemaEndingWith(schemas, ".personalLibrary");
     const main = space.defs.main;
 
     if (!main) throw new Error("Expected a main definition.");

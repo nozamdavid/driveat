@@ -1,12 +1,12 @@
 {
-  "client_id": "https://atstorage.noz.am/android-oauth-client-metadata.json",
-  "client_name": "AT Storage Backup",
+  "client_id": "https://atstorage.noz.am/oauth-client-metadata.json",
+  "client_name": "AT Storage",
   "client_uri": "https://atstorage.noz.am",
-  "redirect_uris": ["am.noz.atstorage:/oauth/callback"],
+  "redirect_uris": ["https://atstorage.noz.am/oauth/callback"],
   "scope": "atproto repo:am.noz.atgallery.account repo:am.noz.atgallery.alpha.publishedAlbum repo:am.noz.atgallery.alpha.albumSnapshot repo:am.noz.atgallery.alpha.publishedMedia repo:am.noz.atgallery.alpha.publishedMembership blob?accept=image%2Fjpeg&accept=image%2Fpng&accept=image%2Fwebp&accept=image%2Fgif&accept=image%2Favif&accept=video%2Fmp4 space:am.noz.atgallery.alpha.personalLibrary?collection=am.noz.atgallery.alpha.libraryMedia&collection=am.noz.atgallery.alpha.libraryAlbum&collection=am.noz.atgallery.alpha.libraryMembership&collection=am.noz.atgallery.alpha.publicationJob&collection=am.noz.atgallery.alpha.transferEvent&action=read&action=read_self&action=create&action=update&action=delete&manage=create&manage=update&manage=delete",
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
-  "application_type": "native",
+  "application_type": "web",
   "dpop_bound_access_tokens": true
 }

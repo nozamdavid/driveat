@@ -46,28 +46,72 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun NativeGalleryScreen(callback: Uri?, model: GalleryViewModel = viewModel()) {
   val state by model.state.collectAsState()
-  var handle by remember { mutableStateOf("") }
+  var handle by remember { mutableStateOf("https://spaces-alpha.host.bsky.network") }
   val context = androidx.compose.ui.platform.LocalContext.current
-  val permission = remember {
-    if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES
-    else Manifest.permission.READ_EXTERNAL_STORAGE
+  val requiredPermissions = remember {
+    buildList {
+      if (Build.VERSION.SDK_INT >= 33) {
+        add(Manifest.permission.READ_MEDIA_IMAGES)
+        add(Manifest.permission.POST_NOTIFICATIONS)
+      } else {
+        add(Manifest.permission.READ_EXTERNAL_STORAGE)
+      }
+    }.toTypedArray()
   }
   val permissionLauncher = rememberLauncherForActivityResult(
-    ActivityResultContracts.RequestPermission(),
-  ) { granted -> if (granted) model.refresh() }
+    ActivityResultContracts.RequestMultiplePermissions(),
+  ) { permissions ->
+    if (permissions[Manifest.permission.READ_MEDIA_IMAGES] == true ||
+      permissions[Manifest.permission.READ_EXTERNAL_STORAGE] == true ||
+      model.hasMediaPermission()
+    ) {
+      model.refresh()
+    }
+  }
 
   LaunchedEffect(Unit) {
-    if (model.hasMediaPermission()) model.refresh() else permissionLauncher.launch(permission)
+    if (model.hasMediaPermission()) {
+      model.refresh()
+      if (Build.VERSION.SDK_INT >= 33 &&
+        androidx.core.content.ContextCompat.checkSelfPermission(
+          context,
+          Manifest.permission.POST_NOTIFICATIONS,
+        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+      ) {
+        permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+      }
+    } else {
+      permissionLauncher.launch(requiredPermissions)
+    }
   }
   LaunchedEffect(callback) { callback?.let(model::finishLogin) }
 
-  Scaffold(topBar = { TopAppBar(title = { Text("ATGallery") }) }) { insets ->
+  Scaffold(
+    topBar = {
+      TopAppBar(
+        title = { Text("AT Storage") },
+        actions = {
+          if (state.signedInDid != null) {
+            TextButton(onClick = model::logout) {
+              Text("Log out")
+            }
+          }
+        },
+      )
+    },
+  ) { insets ->
     Column(Modifier.fillMaxSize().padding(insets)) {
       if (state.signedInDid == null) {
         Card(Modifier.fillMaxWidth().padding(16.dp)) {
           Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Connect your AT Protocol account", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(value = handle, onValueChange = { handle = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Handle or DID") })
+            OutlinedTextField(
+              value = handle,
+              onValueChange = { handle = it },
+              modifier = Modifier.fillMaxWidth(),
+              singleLine = true,
+              label = { Text("Handle, DID, or alpha PDS URL") },
+            )
             Button(
               enabled = handle.isNotBlank() && !state.authenticating,
               onClick = { model.beginLogin(handle) { url -> context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } },
@@ -75,7 +119,13 @@ private fun NativeGalleryScreen(callback: Uri?, model: GalleryViewModel = viewMo
           }
         }
       } else {
-        Text("Connected as ${state.signedInDid}", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
+        Row(
+          Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Text("Connected as ${state.signedInDid}", style = MaterialTheme.typography.bodySmall)
+        }
       }
       Card(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -92,19 +142,23 @@ private fun NativeGalleryScreen(callback: Uri?, model: GalleryViewModel = viewMo
           }
           Button(
             onClick = if (state.running) model::stopBackup else model::startBackup,
-            enabled = state.running || state.signedInDid != null,
+            enabled = state.running || (state.signedInDid != null && state.scanComplete && !state.scanningRemote),
             colors = if (state.running) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) else ButtonDefaults.buttonColors(),
           ) {
             Icon(if (state.running) Icons.Rounded.Stop else Icons.Rounded.CloudUpload, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text(if (state.running) "Stop backup" else "Back up now")
+            Text(
+              if (state.running) "Stop backup"
+              else if (state.scanningRemote) "Checking…"
+              else "Back up now"
+            )
           }
         }
       }
 
       if (!state.permissionGranted) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-          Button(onClick = { permissionLauncher.launch(permission) }) { Text("Allow photo access") }
+          Button(onClick = { permissionLauncher.launch(requiredPermissions) }) { Text("Allow photo access") }
         }
       } else {
         Row(

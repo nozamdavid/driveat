@@ -7,5 +7,5 @@ dependencyResolutionManagement {
   repositories { google(); mavenCentral() }
 }
 
-rootProject.name = "ATGallery Backup"
+rootProject.name = "AT Storage Backup"
 include(":app")

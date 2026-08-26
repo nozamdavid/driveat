@@ -12,7 +12,18 @@ import androidx.work.WorkManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-data class GalleryState(val media: List<LocalMedia> = emptyList(), val mediaStatuses: Map<Long, LocalBackupStatus> = emptyMap(), val hideBackedUpAndIncompatible: Boolean = false, val permissionGranted: Boolean = false, val running: Boolean = false, val status: String = "Ready", val signedInDid: String? = null, val authenticating: Boolean = false)
+data class GalleryState(
+  val media: List<LocalMedia> = emptyList(),
+  val mediaStatuses: Map<Long, LocalBackupStatus> = emptyMap(),
+  val hideBackedUpAndIncompatible: Boolean = false,
+  val permissionGranted: Boolean = false,
+  val running: Boolean = false,
+  val status: String = "Ready",
+  val signedInDid: String? = null,
+  val authenticating: Boolean = false,
+  val scanningRemote: Boolean = false,
+  val scanComplete: Boolean = false,
+)
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
   private val repository = MediaRepository(application)
@@ -65,6 +76,18 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
   fun stopBackup() = BackupScheduler.stopRunning(getApplication(), activeWorkIds)
 
+  fun logout() {
+    BackupScheduler.stopRunning(getApplication(), activeWorkIds)
+    SessionStore(getApplication()).clear()
+    AtProtoApi(getApplication()).clearCache()
+    mutableState.value = mutableState.value.copy(
+      signedInDid = null,
+      status = "Signed out",
+      scanningRemote = false,
+      scanComplete = false,
+    )
+  }
+
   fun setHideBackedUpAndIncompatible(hidden: Boolean) {
     getApplication<Application>().getSharedPreferences("gallery_preferences", Application.MODE_PRIVATE)
       .edit().putBoolean("hide_backed_up_and_incompatible", hidden).apply()
@@ -88,25 +111,47 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
   }
 
   private suspend fun reconcileOnLoad(media: List<LocalMedia>) {
+    if (mutableState.value.scanningRemote) return
     val store = NativeBackupStore(getApplication())
-    val unchecked = media.filterNot { store.isHandled(it.id) }
-    if (unchecked.isEmpty()) return
-    mutableState.value = mutableState.value.copy(status = "Checking ${unchecked.size} photos against your Library")
+    mutableState.value = mutableState.value.copy(scanningRemote = true, scanComplete = false, status = "Connecting to your Space…")
     val api = AtProtoApi(getApplication())
-    var backed = 0; var skipped = 0
     runCatching {
-      for ((index, item) in unchecked.withIndex()) {
-        mutableState.value = mutableState.value.copy(status = "Checking photo ${index + 1} of ${unchecked.size}")
-        when (val outcome = api.preflight(item)) {
-          PreflightOutcome.AlreadyUploaded -> { store.backedUp(item.id); backed++ }
-          is PreflightOutcome.Skipped -> { store.skipped(item.id, outcome.reason); skipped++ }
-          PreflightOutcome.Pending -> Unit
-        }
-        mutableState.value = mutableState.value.copy(mediaStatuses = storedStatuses(media))
+      val remote = api.fetchAllRemoteFingerprints { count ->
+        mutableState.value = mutableState.value.copy(status = "Scanning Library records ($count found)…")
       }
-    }.onSuccess {
-      mutableState.value = mutableState.value.copy(status = "Library checked · $backed already backed up · $skipped incompatible")
-    }.onFailure { error -> mutableState.value = mutableState.value.copy(status = error.message ?: "Library check failed") }
+      var backed = 0
+      var skipped = 0
+      var pending = 0
+      for (item in media) {
+        val local = api.fingerprintsForMedia(item)
+        if (local.any(remote::contains)) {
+          store.backedUp(item.id)
+          backed++
+        } else if (MediaCompatibility.uploadMime(item.name, item.mimeType) == null) {
+          store.skipped(item.id, "Unsupported format")
+          skipped++
+        } else if (item.size > 25L * 1024 * 1024) {
+          store.skipped(item.id, "Original exceeds 25 MiB")
+          skipped++
+        } else {
+          pending++
+        }
+      }
+      mutableState.value = mutableState.value.copy(
+        scanningRemote = false,
+        scanComplete = true,
+        mediaStatuses = storedStatuses(media),
+        status = "Library checked · $backed backed up · $pending pending" + (if (skipped > 0) " · $skipped skipped" else "")
+      )
+    }.onFailure { error ->
+      val signedIn = SessionStore(getApplication()).load()?.did
+      mutableState.value = mutableState.value.copy(
+        scanningRemote = false,
+        scanComplete = false,
+        signedInDid = signedIn,
+        status = error.message ?: "Library check failed"
+      )
+    }
   }
 
 

@@ -22,24 +22,31 @@ class AtProtoOAuth(private val context: Context) {
   private val sessions = SessionStore(context)
   private val pending = context.getSharedPreferences("native_oauth_pending", Context.MODE_PRIVATE)
 
-  suspend fun begin(loginHint: String): AuthorizationLaunch = withContext(Dispatchers.IO) {
-    val resource = jsonGet("${AtProtoConfig.PDS}/.well-known/oauth-protected-resource")
+  suspend fun begin(input: String): AuthorizationLaunch = withContext(Dispatchers.IO) {
+    val trimmed = input.trim()
+    val isUrl = trimmed.startsWith("http://") || trimmed.startsWith("https://")
+    val pdsUrl = if (isUrl) trimmed.trimEnd('/') else AtProtoConfig.PDS
+
+    val resource = jsonGet("$pdsUrl/.well-known/oauth-protected-resource")
     val issuer = resource.getJSONArray("authorization_servers").getString(0)
     val metadata = jsonGet("$issuer/.well-known/oauth-authorization-server")
     val verifier = random(48)
     val state = random(32)
     val challenge = b64(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray()))
     val parEndpoint = metadata.getString("pushed_authorization_request_endpoint")
-    val form = FormBody.Builder()
+    val formBuilder = FormBody.Builder()
       .add("client_id", AtProtoConfig.CLIENT_ID).add("response_type", "code")
       .add("redirect_uri", AtProtoConfig.REDIRECT_URI).add("scope", AtProtoConfig.scope)
       .add("state", state).add("code_challenge", challenge).add("code_challenge_method", "S256")
-      .add("login_hint", loginHint).build()
+    if (!isUrl && trimmed.isNotBlank()) {
+      formBuilder.add("login_hint", trimmed)
+    }
+    val form = formBuilder.build()
     val par = dpopRequest(parEndpoint, "POST", form, null)
     val parJson = JSONObject(par.body?.string() ?: error("Empty PAR response"))
     if (!par.isSuccessful) error(listOf(parJson.optString("error"), parJson.optString("error_description"), parJson.optString("message")).filter(String::isNotBlank).joinToString(": ").ifBlank { "Authorization request failed (${par.code})" })
     pending.edit().putString("state", state).putString("verifier", verifier).putString("issuer", issuer)
-      .putString("token_endpoint", metadata.getString("token_endpoint")).putString("resource", AtProtoConfig.PDS).apply()
+      .putString("token_endpoint", metadata.getString("token_endpoint")).putString("resource", pdsUrl).apply()
     val url = Uri.parse(metadata.getString("authorization_endpoint")).buildUpon()
       .appendQueryParameter("client_id", AtProtoConfig.CLIENT_ID)
       .appendQueryParameter("request_uri", parJson.getString("request_uri")).build().toString()
@@ -68,7 +75,18 @@ class AtProtoOAuth(private val context: Context) {
     var session = sessions.load() ?: error("Sign in first")
     var response = resourceRequest(session, method, url, body, contentType)
     if (response.code == 401 && session.refreshToken != null) {
-      response.close(); session = refresh(session); response = resourceRequest(session, method, url, body, contentType)
+      response.close()
+      session = try {
+        refresh(session)
+      } catch (t: Throwable) {
+        sessions.clear()
+        throw t
+      }
+      response = resourceRequest(session, method, url, body, contentType)
+      if (response.code == 401) {
+        sessions.clear()
+        error("Session authorization expired, please sign in again")
+      }
     }
     response
   }
@@ -85,7 +103,10 @@ class AtProtoOAuth(private val context: Context) {
     val form = FormBody.Builder().add("grant_type", "refresh_token").add("refresh_token", old.refreshToken!!).add("client_id", AtProtoConfig.CLIENT_ID).build()
     val response = dpopRequest(old.tokenEndpoint, "POST", form, null)
     val json = JSONObject(response.body?.string() ?: error("Empty refresh response"))
-    if (!response.isSuccessful) error(json.optString("message", "Session refresh failed"))
+    if (!response.isSuccessful) {
+      sessions.clear()
+      error(json.optString("message", "Session refresh failed"))
+    }
     return old.copy(did = json.getString("sub"), accessToken = json.getString("access_token"), refreshToken = json.optString("refresh_token").takeIf(String::isNotBlank) ?: old.refreshToken).also(sessions::save)
   }
 

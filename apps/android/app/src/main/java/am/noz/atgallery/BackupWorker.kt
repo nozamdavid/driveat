@@ -51,7 +51,13 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
   }
 
   private fun foregroundInfo(detail: String, current: Int, total: Int): ForegroundInfo {
-    applicationContext.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "Photo backup", NotificationManager.IMPORTANCE_LOW))
+    val manager = applicationContext.getSystemService(NotificationManager::class.java)
+    val channel = NotificationChannel(CHANNEL, "Photo backup", NotificationManager.IMPORTANCE_DEFAULT).apply {
+      description = "Shows live backup progress"
+      setShowBadge(false)
+    }
+    manager.createNotificationChannel(channel)
+
     val progressText = if (total > 0) "${(total - current + 1).coerceIn(0, total)} photos left…" else "Calculating photos left…"
     val stopIntent = PendingIntent.getBroadcast(
       applicationContext,
@@ -61,14 +67,17 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
     )
     val promote = inputData.getBoolean(PROMOTE_LIVE_UPDATE, false)
     val notification = if (Build.VERSION.SDK_INT >= 36 && promote) {
-      liveUpdateNotification(progressText, current, total, stopIntent)
+      liveUpdateNotification(detail, progressText, current, total, stopIntent)
     } else {
       NotificationCompat.Builder(applicationContext, CHANNEL)
         .setSmallIcon(R.mipmap.ic_launcher)
         .setContentTitle("Backup in progress")
         .setContentText(progressText)
+        .setSubText(detail)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
+        .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+        .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         .setProgress(total, current, total <= 0)
         .addAction(0, "Stop backup", stopIntent)
         .build()
@@ -77,23 +86,25 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
   }
 
   @androidx.annotation.RequiresApi(36)
-  private fun liveUpdateNotification(progressText: String, current: Int, total: Int, stopIntent: PendingIntent): Notification {
+  private fun liveUpdateNotification(detail: String, progressText: String, current: Int, total: Int, stopIntent: PendingIntent): Notification {
     val style = Notification.ProgressStyle()
       .setProgress(if (total > 0) current.coerceAtMost(total) else 0)
       .setProgressIndeterminate(total <= 0)
     if (total > 0) {
       style.setProgressSegments(listOf(Notification.ProgressStyle.Segment(total).setColor(Color.rgb(46, 125, 91))))
     }
-    return Notification.Builder(applicationContext, CHANNEL)
+    val builder = Notification.Builder(applicationContext, CHANNEL)
       .setSmallIcon(R.mipmap.ic_launcher)
       .setContentTitle("Backup in progress")
       .setContentText(progressText)
+      .setSubText(detail)
       .setOngoing(true)
       .setOnlyAlertOnce(true)
+      .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
       .addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
       .setStyle(style)
       .addAction(Notification.Action.Builder(null, "Stop backup", stopIntent).build())
-      .build()
+    return builder.build()
   }
 
   companion object {

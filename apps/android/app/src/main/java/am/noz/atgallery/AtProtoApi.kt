@@ -10,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.time.Instant
+import kotlinx.coroutines.delay
 
 class AtProtoApi(private val context: Context) {
   private val oauth = AtProtoOAuth(context)
@@ -17,11 +18,58 @@ class AtProtoApi(private val context: Context) {
   private var cachedSpace: String? = null
   private var cachedFingerprints: MutableSet<String>? = null
 
+  fun clearCache() {
+    cachedSpace = null
+    cachedFingerprints = null
+  }
+
+  fun fingerprintsForMedia(media: LocalMedia): Set<String> {
+    return fingerprints(media.name, media.size, media.width, media.height, media.capturedAtMillis)
+  }
+
+  suspend fun fetchAllRemoteFingerprints(progress: (suspend (Int) -> Unit)? = null): Set<String> {
+    val session = sessionStore.load() ?: error("Sign in before checking photos")
+    val space = cachedSpace ?: personalSpace(session).also { cachedSpace = it }
+    val result = mutableSetOf<String>()
+    var cursor: String? = null
+    do {
+      val builder = Uri.parse("${session.resourceServer}/xrpc/com.atproto.space.listRecords")
+        .buildUpon()
+        .appendQueryParameter("space", space)
+        .appendQueryParameter("repo", session.did)
+        .appendQueryParameter("collection", AtProtoConfig.LIBRARY_MEDIA)
+        .appendQueryParameter("limit", "100")
+      cursor?.let { builder.appendQueryParameter("cursor", it) }
+      val json = getJson(builder.build().toString())
+      val records = json.optJSONArray("records") ?: JSONArray()
+      for (i in 0 until records.length()) {
+        records.getJSONObject(i).optJSONObject("value")?.let { value ->
+          if (value.has("originalFilename") && value.has("originalSize")) {
+            val capture = value.optJSONObject("extractedMetadata")?.optString("captureTime")
+              ?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+            result += fingerprints(
+              value.getString("originalFilename"),
+              value.getLong("originalSize"),
+              value.optInt("width"),
+              value.optInt("height"),
+              capture
+            )
+          }
+        }
+      }
+      progress?.invoke(result.size)
+      cursor = json.optString("cursor").takeIf(String::isNotBlank)
+      if (cursor != null) delay(1000)
+    } while (cursor != null)
+    cachedFingerprints = result
+    return result
+  }
+
   suspend fun preflight(media: LocalMedia): PreflightOutcome {
     val session = sessionStore.load() ?: error("Sign in before checking photos")
     val space = cachedSpace ?: personalSpace(session).also { cachedSpace = it }
-    val remote = cachedFingerprints ?: remoteFingerprints(session, space).toMutableSet().also { cachedFingerprints = it }
-    val local = fingerprints(media.name, media.size, media.width, media.height, media.capturedAtMillis)
+    val remote = cachedFingerprints ?: fetchAllRemoteFingerprints().toMutableSet().also { cachedFingerprints = it }
+    val local = fingerprintsForMedia(media)
     if (local.any(remote::contains)) return PreflightOutcome.AlreadyUploaded
     if (MediaCompatibility.uploadMime(media.name, media.mimeType) == null) {
       return PreflightOutcome.Skipped("Unsupported image format (${media.mimeType ?: media.name.substringAfterLast('.', "unknown")})")
@@ -33,9 +81,8 @@ class AtProtoApi(private val context: Context) {
   suspend fun backup(media: LocalMedia, progress: suspend (String) -> Unit): BackupOutcome {
     val session = sessionStore.load() ?: error("Sign in before backing up")
     val space = cachedSpace ?: personalSpace(session).also { cachedSpace = it }
-    progress("Checking whether ${media.name} is already backed up")
-    val fingerprints = cachedFingerprints ?: remoteFingerprints(session, space).toMutableSet().also { cachedFingerprints = it }
-    val localFingerprints = fingerprints(media.name, media.size, media.width, media.height, media.capturedAtMillis)
+    val fingerprints = cachedFingerprints ?: fetchAllRemoteFingerprints().toMutableSet().also { cachedFingerprints = it }
+    val localFingerprints = fingerprintsForMedia(media)
     when (val check = preflight(media)) {
       PreflightOutcome.AlreadyUploaded -> return BackupOutcome.AlreadyUploaded
       is PreflightOutcome.Skipped -> return BackupOutcome.Skipped(check.reason)
@@ -74,23 +121,6 @@ class AtProtoApi(private val context: Context) {
     val spaces = json.optJSONArray("spaces") ?: JSONArray()
     require(spaces.length() == 1) { if (spaces.length() == 0) "Create the personal Library Space in the web app first" else "Multiple personal Library Spaces found" }
     return spaces.getJSONObject(0).getString("uri")
-  }
-
-  private suspend fun remoteFingerprints(session: OAuthSession, space: String): Set<String> {
-    val result = mutableSetOf<String>(); var cursor: String? = null
-    do {
-      val builder = Uri.parse("${session.resourceServer}/xrpc/com.atproto.space.listRecords").buildUpon().appendQueryParameter("space", space).appendQueryParameter("repo", session.did).appendQueryParameter("collection", AtProtoConfig.LIBRARY_MEDIA).appendQueryParameter("limit", "100")
-      cursor?.let { builder.appendQueryParameter("cursor", it) }
-      val json = getJson(builder.build().toString()); val records = json.optJSONArray("records") ?: JSONArray()
-      for (i in 0 until records.length()) records.getJSONObject(i).optJSONObject("value")?.let { value ->
-        if (value.has("originalFilename") && value.has("originalSize")) {
-          val capture = value.optJSONObject("extractedMetadata")?.optString("captureTime")?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
-          result += fingerprints(value.getString("originalFilename"), value.getLong("originalSize"), value.optInt("width"), value.optInt("height"), capture)
-        }
-      }
-      cursor = json.optString("cursor").takeIf(String::isNotBlank)
-    } while (cursor != null)
-    return result
   }
 
   private suspend fun uploadBlob(session: OAuthSession, bytes: ByteArray, mime: String): JSONObject {

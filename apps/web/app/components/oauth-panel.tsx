@@ -10,7 +10,7 @@ import {
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import Link from "next/link";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { errorMessage } from "../../lib/error-message";
 import { clearLibrarySnapshots } from "../../lib/library-snapshot";
@@ -159,20 +159,31 @@ export function OAuthPanel() {
     };
   }, [view]);
 
-  const displayedPersonalSpace: PersonalSpaceView =
-    oauthPermissionConfiguration.mode === "identity-only"
+  const displayedPersonalSpace: PersonalSpaceView = useMemo(
+    () => oauthPermissionConfiguration.mode === "identity-only"
       ? { status: "not-configured" }
-      : (personalSpace ?? { status: "checking" });
+      : (personalSpace ?? { status: "checking" }),
+    [personalSpace],
+  );
 
   useEffect(() => {
+    let active = true;
+    const updateGatewayState = (
+      access: MediaGatewayAccess | undefined,
+      error: string | undefined,
+    ) => queueMicrotask(() => {
+      if (!active) return;
+      setMediaGatewayAccess(access);
+      setGatewayError(error);
+    });
+
     if (
       view.status !== "authenticated" ||
       displayedPersonalSpace.status !== "ready" ||
       oauthPermissionConfiguration.mode !== "gallery"
     ) {
-      setMediaGatewayAccess(undefined);
-      setGatewayError(undefined);
-      return;
+      updateGatewayState(undefined, undefined);
+      return () => { active = false; };
     }
 
     let gatewayUrl: string | undefined;
@@ -181,19 +192,16 @@ export function OAuthPanel() {
         process.env.NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL,
       );
     } catch (urlErr) {
-      setMediaGatewayAccess(undefined);
-      setGatewayError(errorMessage(urlErr, "Invalid media gateway URL."));
-      return;
+      updateGatewayState(undefined, errorMessage(urlErr, "Invalid media gateway URL."));
+      return () => { active = false; };
     }
 
     if (!gatewayUrl) {
-      setMediaGatewayAccess(undefined);
-      setGatewayError("NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL is not configured.");
-      return;
+      updateGatewayState(undefined, "NEXT_PUBLIC_ATGALLERY_MEDIA_GATEWAY_URL is not configured.");
+      return () => { active = false; };
     }
 
-    let active = true;
-    setGatewayError(undefined);
+    updateGatewayState(undefined, undefined);
     void connectMediaGateway({
       baseUrl: gatewayUrl,
       delegationClient: view.session.fetchHandler.bind(view.session),
@@ -351,6 +359,7 @@ export function OAuthPanel() {
         oauthPermissionConfiguration.mode === "gallery" ? (
           <PrivateLibrary
             albumCollection={oauthPermissionConfiguration.albumCollection}
+            libraryIndexCollection={oauthPermissionConfiguration.libraryIndexCollection}
             libraryMediaCollection={oauthPermissionConfiguration.libraryMediaCollection}
             mediaGatewayAccess={mediaGatewayAccess}
             membershipCollection={oauthPermissionConfiguration.membershipCollection}

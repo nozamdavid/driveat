@@ -143,6 +143,27 @@ export function indexLibraryRecords(input: Readonly<{
   };
 }
 
+export function removeMediaFromLibrary(
+  library: Readonly<{
+    albums: readonly LibraryAlbum[];
+    media: readonly LibraryMedia[];
+    memberships: readonly LibraryMembership[];
+  }>,
+  removedUris: ReadonlySet<string>,
+): Readonly<{
+  albums: readonly LibraryAlbum[];
+  media: readonly LibraryMedia[];
+  memberships: readonly LibraryMembership[];
+}> {
+  return {
+    albums: library.albums,
+    media: library.media.filter((item) => !removedUris.has(item.uri)),
+    memberships: library.memberships.filter(
+      (membership) => !removedUris.has(membership.mediaUri),
+    ),
+  };
+}
+
 export function nextMembershipPosition(
   memberships: readonly Pick<LibraryMembership, "albumUri" | "position">[],
   albumUri: string,
@@ -158,6 +179,22 @@ export function recordKeyFromAtUri(uri: string): string {
   const rkey = uri.split("/").at(-1);
   if (!rkey) throw new TypeError(`Space record URI has no record key: ${uri}`);
   return rkey;
+}
+
+export function latestRecordKey<T extends { uri: string }>(items: readonly T[]): string | undefined {
+  if (items.length === 0) return undefined;
+  let latest: string | undefined;
+  for (const item of items) {
+    try {
+      const rkey = recordKeyFromAtUri(item.uri);
+      if (!latest || rkey.localeCompare(latest) > 0) {
+        latest = rkey;
+      }
+    } catch {
+      // Ignore invalid URIs
+    }
+  }
+  return latest;
 }
 
 function duplicateName(filename: string): Readonly<{ base: string; index: number }> {

@@ -7,26 +7,12 @@ import { type FormEvent, useState } from "react";
 
 import { errorMessage } from "../../lib/error-message";
 import {
-  authenticatedSpaceBlobUrl,
-  pdslsSpaceRecordUrl,
   preparePrivateImage,
   PRIVATE_IMAGE_MIME_TYPES,
 } from "../../lib/private-image";
 import { recentTransferEvents } from "../../lib/transfer-quota";
 
 type UploadStage = "idle" | "preparing" | "checking-quota" | "uploading" | "writing";
-
-type UploadDebug = Readonly<{
-  mediaCid: string;
-  originalBlobCid: string;
-  originalBlobUrl: string;
-  pdsUrl: string;
-  pdslsUrl: string;
-  previewBlobCid: string;
-  previewBlobUrl: string;
-  recordUri: string;
-  spaceUri: string;
-}>;
 
 type Props = Readonly<{
   libraryMediaCollection: string;
@@ -61,7 +47,6 @@ export function PrivateImageUpload({
   const [file, setFile] = useState<File>();
   const [stage, setStage] = useState<UploadStage>("idle");
   const [error, setError] = useState<string>();
-  const [debug, setDebug] = useState<UploadDebug>();
   const busy = stage !== "idle";
 
   async function upload(event: FormEvent<HTMLFormElement>) {
@@ -70,7 +55,6 @@ export function PrivateImageUpload({
     const form = event.currentTarget;
 
     setError(undefined);
-    setDebug(undefined);
     setStage("preparing");
 
     try {
@@ -150,34 +134,9 @@ export function PrivateImageUpload({
         throw new Error("The PDS created the records but did not return the media record reference.");
       }
 
-      const token = await session.getTokenInfo();
-      const pdsUrl = token.aud;
-      const originalBlobCid = original.ref.toString();
-      const previewBlobCid = preview.ref.toString();
-      setDebug({
-        mediaCid: result.cid,
-        originalBlobCid,
-        originalBlobUrl: authenticatedSpaceBlobUrl(
-          pdsUrl,
-          spaceUri,
-          session.did,
-          originalBlobCid,
-        ),
-        pdsUrl,
-        pdslsUrl: pdslsSpaceRecordUrl(result.uri),
-        previewBlobCid,
-        previewBlobUrl: authenticatedSpaceBlobUrl(
-          pdsUrl,
-          spaceUri,
-          session.did,
-          previewBlobCid,
-        ),
-        recordUri: result.uri,
-        spaceUri,
-      });
-      await onUploaded?.();
       setFile(undefined);
       form.reset();
+      await onUploaded?.();
     } catch (caught: unknown) {
       setError(errorMessage(caught, "The private image upload failed."));
     } finally {
@@ -207,29 +166,6 @@ export function PrivateImageUpload({
       </form>
       {messageForStage(stage) ? <p className="upload-progress">{messageForStage(stage)}</p> : null}
       {error ? <p className="oauth-error" role="alert">{error}</p> : null}
-
-      {debug ? (
-        <div className="upload-debug" aria-live="polite">
-          <h3>Private upload debug</h3>
-          <dl>
-            <div><dt>PDS</dt><dd>{debug.pdsUrl}</dd></div>
-            <div><dt>Space</dt><dd>{debug.spaceUri}</dd></div>
-            <div><dt>Record</dt><dd>{debug.recordUri}</dd></div>
-            <div><dt>Record CID</dt><dd>{debug.mediaCid}</dd></div>
-            <div><dt>Original blob CID</dt><dd>{debug.originalBlobCid}</dd></div>
-            <div><dt>Preview blob CID</dt><dd>{debug.previewBlobCid}</dd></div>
-            <div><dt>Original getBlob</dt><dd>{debug.originalBlobUrl}</dd></div>
-            <div><dt>Preview getBlob</dt><dd>{debug.previewBlobUrl}</dd></div>
-          </dl>
-          <a href={debug.pdslsUrl} target="_blank" rel="noreferrer">
-            Inspect the private record and blobs in PDSls
-          </a>
-          <p className="fine-print">
-            PDSls must authenticate as an allowed Space user. A plain anonymous blob request will
-            receive an authorization error.
-          </p>
-        </div>
-      ) : null}
     </section>
   );
 }

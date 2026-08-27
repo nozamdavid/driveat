@@ -1,0 +1,46 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.alpha.libraryIndex",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A private snapshot index and watermark pointer for fast Library synchronization.",
+      "key": "literal:current",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "itemCount",
+          "updatedAt",
+          "watermark",
+          "blob"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "itemCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "watermark": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "blob": {
+            "type": "blob",
+            "accept": [
+              "application/json"
+            ],
+            "maxSize": 26214400
+          }
+        }
+      }
+    }
+  }
+}

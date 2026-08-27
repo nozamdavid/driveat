@@ -11,6 +11,7 @@
         "am.noz.atgallery.alpha.libraryMedia",
         "am.noz.atgallery.alpha.libraryAlbum",
         "am.noz.atgallery.alpha.libraryMembership",
+        "am.noz.atgallery.alpha.libraryIndex",
         "am.noz.atgallery.alpha.publicationJob",
         "am.noz.atgallery.alpha.transferEvent"
       ]

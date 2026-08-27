@@ -51,7 +51,7 @@ describe("createAlphaLexiconSchemas", () => {
     const lexicons = new Lexicons(schemas);
 
     expect(schemas.map((schema) => schema.id).sort()).toEqual(Object.values(nsids).sort());
-    expect(Array.from(lexicons)).toHaveLength(11);
+    expect(Array.from(lexicons)).toHaveLength(12);
   });
 
   it("declares the private Space consent name and exact private collections", () => {
@@ -69,6 +69,7 @@ describe("createAlphaLexiconSchemas", () => {
       nsids.libraryMedia,
       nsids.libraryAlbum,
       nsids.libraryMembership,
+      nsids.libraryIndex,
       nsids.publicationJob,
       nsids.transferEvent,
     ]);

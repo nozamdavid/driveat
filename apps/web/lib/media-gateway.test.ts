@@ -36,6 +36,7 @@ describe("media gateway configuration", () => {
     const init = fetchMock.mock.calls[0]?.[1];
     expect(String(init?.body)).toContain("single-use-delegation");
     expect(String(init?.body)).not.toContain("oauth");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("obtains delegation token via authenticated fetch handler", async () => {

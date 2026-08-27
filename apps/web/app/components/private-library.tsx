@@ -16,14 +16,22 @@ import {
 import { eligibleAlbumsForTargets, unmemberedTargetUris } from "../../lib/album-picker";
 import { errorMessage } from "../../lib/error-message";
 import {
+  isFreshLibrarySnapshot,
   readLibrarySnapshot,
   writeLibrarySnapshot,
+  type LibraryWatermarks,
 } from "../../lib/library-snapshot";
 import { pruneSelectedUris, toggleSelectedUri } from "../../lib/media-selection";
 import { clampMenuPosition, type Point, type Size } from "../../lib/menu-position";
 import { fetchGatewayBlob, type MediaGatewayAccess } from "../../lib/media-gateway";
 import {
+  getCachedOriginal,
+  isOriginalCached,
+  setCachedOriginal,
+} from "../../lib/full-image-cache";
+import {
   cachePreviewBlob,
+  prunePreviewCache,
   purgeLegacyPreviewDataUrls,
   readCachedPreview,
 } from "../../lib/preview-cache";
@@ -36,9 +44,16 @@ import {
   type LibraryAlbum,
   type LibraryMedia,
   type LibraryMembership,
+  type RawSpaceRecord,
+  latestRecordKey,
   nextMembershipPosition,
   recordKeyFromAtUri,
+  removeMediaFromLibrary,
 } from "../../lib/private-library";
+import {
+  fetchRemoteLibraryIndex,
+  publishRemoteLibraryIndex,
+} from "../../lib/library-index";
 import { listAllSpaceRecords } from "../../lib/space-records";
 import { formatBytes, privateLibraryStorageBytes } from "../../lib/storage-total";
 import { recentTransferEvents, transferQuotaStatus, type TransferQuotaStatus } from "../../lib/transfer-quota";
@@ -46,6 +61,7 @@ import { PrivateImageUpload } from "./private-image-upload";
 
 type Props = Readonly<{
   albumCollection: string;
+  libraryIndexCollection?: string | undefined;
   libraryMediaCollection: string;
   mediaGatewayAccess?: MediaGatewayAccess | undefined;
   membershipCollection: string;
@@ -227,18 +243,25 @@ function PrivateViewerImage({
 
     void (async () => {
       try {
-        // Step 1: Render cached preview immediately if available
-        const cached = await readCachedPreview(media.previewCid);
-        if (cached && active) {
-          show(cached, false);
+        // Step 1: Render cached full-resolution original immediately if in memory
+        const cachedFull = getCachedOriginal(media.originalCid);
+        if (cachedFull && active) {
+          show(cachedFull, true);
+          return;
+        }
+
+        // Step 2: Render cached preview immediately if available
+        const cachedPreview = await readCachedPreview(media.previewCid);
+        if (cachedPreview && active) {
+          show(cachedPreview, false);
         }
 
         if (!mediaGatewayAccess) {
           return;
         }
 
-        // Step 2: If preview was not cached, fetch preview
-        if (!cached) {
+        // Step 3: If preview was not cached, fetch preview
+        if (!cachedPreview) {
           const previewResp = await fetchGatewayBlob(
             mediaGatewayAccess,
             media.previewCid,
@@ -251,7 +274,7 @@ function PrivateViewerImage({
           }
         }
 
-        // Step 3: Fetch full-resolution original image
+        // Step 4: Fetch full-resolution original image and store in memory cache
         if (media.originalCid) {
           const fullResp = await fetchGatewayBlob(
             mediaGatewayAccess,
@@ -260,6 +283,7 @@ function PrivateViewerImage({
           );
           if (fullResp.ok && active) {
             const fullBlob = await fullResp.blob();
+            setCachedOriginal(media.originalCid, fullBlob);
             show(fullBlob, true);
           }
         }
@@ -332,15 +356,15 @@ function PhotoViewer({
     return () => window.removeEventListener("keydown", closeViewerOnKey);
   }, [activeMediaIndex, onClose, onNavigate, orderedMedia]);
 
-  // Lazy prefetch adjacent (previous & next) media for instant navigation
+  // Lazy prefetch adjacent media for instant navigation (prioritizing forward navigation)
   useEffect(() => {
     if (!mediaGatewayAccess) return;
-    const prevMedia = activeMediaIndex > 0 ? orderedMedia[activeMediaIndex - 1] : undefined;
     const nextMedia =
       activeMediaIndex < orderedMedia.length - 1 ? orderedMedia[activeMediaIndex + 1] : undefined;
-    const adjacent = [nextMedia, prevMedia].filter((m): m is LibraryMedia => !!m);
+    const prevMedia = activeMediaIndex > 0 ? orderedMedia[activeMediaIndex - 1] : undefined;
+    const candidates = [nextMedia, prevMedia].filter((m): m is LibraryMedia => !!m);
 
-    for (const m of adjacent) {
+    for (const m of candidates) {
       void (async () => {
         try {
           const cached = await readCachedPreview(m.previewCid);
@@ -351,8 +375,13 @@ function PhotoViewer({
               void cachePreviewBlob(m.previewCid, blob);
             }
           }
-          if (m.originalCid) {
-            await fetchGatewayBlob(mediaGatewayAccess, m.originalCid, m.mime);
+          // Only prefetch original if not already cached in memory
+          if (m.originalCid && !isOriginalCached(m.originalCid)) {
+            const resp = await fetchGatewayBlob(mediaGatewayAccess, m.originalCid, m.mime);
+            if (resp.ok) {
+              const blob = await resp.blob();
+              setCachedOriginal(m.originalCid, blob);
+            }
           }
         } catch {
           // Best-effort prefetch
@@ -796,6 +825,7 @@ function DuplicateReviewDialog({
 
 export function PrivateLibrary({
   albumCollection,
+  libraryIndexCollection,
   libraryMediaCollection,
   mediaGatewayAccess,
   membershipCollection,
@@ -811,13 +841,33 @@ export function PrivateLibrary({
       ? { albums: initialSnapshot.albums, media: initialSnapshot.media, memberships: initialSnapshot.memberships }
       : EMPTY_LIBRARY,
   );
+  const libraryRef = useRef(library);
+  const initialMediaWatermark =
+    latestRecordKey(initialSnapshot?.media ?? []) ??
+    initialSnapshot?.watermarks?.media ??
+    initialSnapshot?.watermark;
+  const initialWatermarks: LibraryWatermarks | undefined = initialSnapshot
+    ? {
+        media: initialMediaWatermark,
+        albums:
+          latestRecordKey(initialSnapshot.albums) ??
+          initialSnapshot.watermarks?.albums,
+        memberships:
+          latestRecordKey(initialSnapshot.memberships) ??
+          initialSnapshot.watermarks?.memberships,
+      }
+    : undefined;
+  const watermarkRef = useRef<string | undefined>(initialMediaWatermark);
+  const watermarksRef = useRef<LibraryWatermarks | undefined>(initialWatermarks);
+  const refreshGenerationRef = useRef(0);
+  const mediaGatewayAccessRef = useRef(mediaGatewayAccess);
   const [selectedAlbum, setSelectedAlbum] = useState<string>(ALL_MEDIA);
   const [albumTitle, setAlbumTitle] = useState("");
   const [query, setQuery] = useState("");
+  const [uploadDrawerOpen, setUploadDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(!initialSnapshot);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState<string>();
-  const [pdsUrl, setPdsUrl] = useState<string | undefined>(initialSnapshot?.pdsUrl);
   const [transferStatus, setTransferStatus] = useState<TransferQuotaStatus>();
   const [activeMediaUri, setActiveMediaUri] = useState<string>();
   const [albumPendingDeleteUri, setAlbumPendingDeleteUri] = useState<string>();
@@ -828,6 +878,14 @@ export function PrivateLibrary({
   const [duplicateChoiceOpen, setDuplicateChoiceOpen] = useState(false);
   const [duplicateReviewPairs, setDuplicateReviewPairs] = useState<readonly DuplicateMediaGroup[]>();
   const [duplicateReviewIndex, setDuplicateReviewIndex] = useState(0);
+
+  useEffect(() => {
+    libraryRef.current = library;
+  }, [library]);
+
+  useEffect(() => {
+    mediaGatewayAccessRef.current = mediaGatewayAccess;
+  }, [mediaGatewayAccess]);
 
   const selectionActive = selectedUris.size > 0;
 
@@ -882,52 +940,152 @@ export function PrivateLibrary({
     [library.media],
   );
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: Readonly<{ preferFreshSnapshot?: boolean }> = {}) => {
+    if (options.preferFreshSnapshot && isFreshLibrarySnapshot(initialSnapshot)) {
+      setLoading(false);
+      return;
+    }
+    const refreshGeneration = ++refreshGenerationRef.current;
     setLoading(true);
     setError(undefined);
     try {
       const agent = new Agent(session);
       const now = new Date();
-      const [media, albums, memberships, token, transferEvents] = await Promise.all([
-        listAllSpaceRecords(
+
+      let currentLibrary = libraryRef.current;
+      let watermark = watermarkRef.current;
+
+      // If local cache is empty, attempt to hydrate from remote index blob in 1 request
+      if (currentLibrary.media.length === 0 && libraryIndexCollection) {
+        console.info("[AT Storage] Fetching remote libraryIndex snapshot from Space...");
+        const gatewayAccess = mediaGatewayAccessRef.current;
+        const remoteIndex = gatewayAccess ? await fetchRemoteLibraryIndex(agent, {
+          space: spaceUri,
+          repo: session.did,
+          indexCollection: libraryIndexCollection,
+        }, gatewayAccess) : undefined;
+        if (remoteIndex && remoteIndex.media.length > 0) {
+          console.info(`[AT Storage] Successfully hydrated ${remoteIndex.media.length} photos and ${remoteIndex.albums.length} albums from remote index! Watermark:`, remoteIndex.watermark);
+          currentLibrary = {
+            albums: remoteIndex.albums,
+            media: remoteIndex.media,
+            memberships: remoteIndex.memberships,
+          };
+          const remoteWatermarks: LibraryWatermarks = {
+            media:
+              latestRecordKey(remoteIndex.media) ??
+              remoteIndex.watermarks?.media ??
+              remoteIndex.watermark,
+            albums:
+              latestRecordKey(remoteIndex.albums) ??
+              remoteIndex.watermarks?.albums,
+            memberships:
+              latestRecordKey(remoteIndex.memberships) ??
+              remoteIndex.watermarks?.memberships,
+          };
+          watermark = remoteWatermarks.media;
+          watermarkRef.current = watermark;
+          watermarksRef.current = remoteWatermarks;
+          setLibrary(currentLibrary);
+          setLoading(false);
+        } else {
+          console.warn("[AT Storage] Remote libraryIndex was empty or not found:", remoteIndex);
+        }
+      }
+
+      let updatedLibrary: LibraryState;
+      let nextWatermarks: LibraryWatermarks;
+      {
+        // Stream libraryMedia records with live page rendering
+        const accumulatedMedia: RawSpaceRecord[] = [];
+        const mediaPromise = listAllSpaceRecords(
           agent,
           { space: spaceUri, repo: session.did, collection: libraryMediaCollection },
-          { pageLimitMessage: `Collection ${libraryMediaCollection} exceeded the Library safety page limit.` },
-        ),
-        listAllSpaceRecords(
-          agent,
-          { space: spaceUri, repo: session.did, collection: albumCollection },
-          { pageLimitMessage: `Collection ${albumCollection} exceeded the Library safety page limit.` },
-        ),
-        listAllSpaceRecords(
-          agent,
-          { space: spaceUri, repo: session.did, collection: membershipCollection },
-          { pageLimitMessage: `Collection ${membershipCollection} exceeded the Library safety page limit.` },
-        ),
-        session.getTokenInfo(),
-        recentTransferEvents(agent, spaceUri, session.did, transferEventCollection, now),
-      ]);
-      const indexed = indexLibraryRecords({ media, albums, memberships });
-      setLibrary(indexed);
+          {
+            onPage: (pageRecords) => {
+              for (const item of pageRecords) {
+                if (item.value) {
+                  accumulatedMedia.push({
+                    uri: `${spaceUri}/${session.did}/${item.collection}/${item.rkey}`,
+                    cid: item.cid,
+                    value: item.value,
+                  });
+                }
+              }
+              const partialMedia = indexLibraryRecords({
+                media: accumulatedMedia,
+                albums: [],
+                memberships: [],
+              }).media;
+              setLibrary((prev) => ({ ...prev, media: partialMedia }));
+              setLoading(false);
+              return true;
+            },
+          },
+        );
+
+        const [media, albums, memberships, transferEvents] = await Promise.all([
+          mediaPromise,
+          listAllSpaceRecords(
+            agent,
+            { space: spaceUri, repo: session.did, collection: albumCollection },
+          ),
+          listAllSpaceRecords(
+            agent,
+            { space: spaceUri, repo: session.did, collection: membershipCollection },
+          ),
+          recentTransferEvents(agent, spaceUri, session.did, transferEventCollection, now),
+        ]);
+        updatedLibrary = indexLibraryRecords({ media, albums, memberships });
+        nextWatermarks = {
+          media: media[0] ? recordKeyFromAtUri(media[0].uri) : undefined,
+          albums: albums[0] ? recordKeyFromAtUri(albums[0].uri) : undefined,
+          memberships: memberships[0] ? recordKeyFromAtUri(memberships[0].uri) : undefined,
+        };
+        watermarksRef.current = nextWatermarks;
+        watermarkRef.current = nextWatermarks.media;
+        setTransferStatus(transferQuotaStatus(transferEvents, now));
+      }
+
+      if (refreshGeneration !== refreshGenerationRef.current) return;
+
+      setLibrary(updatedLibrary);
       setSelectedUris((current) =>
-        pruneSelectedUris(current, new Set(indexed.media.map((item) => item.uri))),
+        pruneSelectedUris(current, new Set(updatedLibrary.media.map((item) => item.uri))),
       );
-      setPdsUrl(token.aud);
-      setTransferStatus(transferQuotaStatus(transferEvents, now));
       writeLibrarySnapshot(session.did, spaceUri, {
-        ...indexed,
-        pdsUrl: token.aud,
+        ...updatedLibrary,
+        refreshedAt: new Date().toISOString(),
+        ...(nextWatermarks.media ? { watermark: nextWatermarks.media } : {}),
+        watermarks: nextWatermarks,
       });
+      await prunePreviewCache(new Set(updatedLibrary.media.map((item) => item.previewCid)));
+
+      // Every authoritative refresh repairs the derived index, including after a prior
+      // publication failure or records deleted by another client.
+      if (libraryIndexCollection && refreshGeneration === refreshGenerationRef.current) {
+        await publishRemoteLibraryIndex(agent, {
+          space: spaceUri,
+          repo: session.did,
+          indexCollection: libraryIndexCollection,
+        }, {
+          formatVersion: 1,
+          generatedAt: new Date().toISOString(),
+          ...(nextWatermarks.media ? { watermark: nextWatermarks.media } : {}),
+          watermarks: nextWatermarks,
+          ...updatedLibrary,
+        });
+      }
     } catch (caught: unknown) {
       setError(errorMessage(caught, LIBRARY_REQUEST_FAILED));
     } finally {
       setLoading(false);
     }
-  }, [albumCollection, libraryMediaCollection, membershipCollection, session, spaceUri, transferEventCollection]);
+  }, [albumCollection, initialSnapshot, libraryIndexCollection, libraryMediaCollection, membershipCollection, session, spaceUri, transferEventCollection]);
 
   // The deferred timeout lets first paint/hydration finish before the network fan-out begins.
   useEffect(() => {
-    const timeout = window.setTimeout(() => void refresh(), 0);
+    const timeout = window.setTimeout(() => void refresh({ preferFreshSnapshot: true }), 0);
     return () => window.clearTimeout(timeout);
   }, [refresh]);
 
@@ -997,6 +1155,39 @@ export function PrivateLibrary({
       collection,
       rkey: recordKeyFromAtUri(uri),
     });
+  }
+
+  async function commitLocalLibrary(agent: Agent, nextLibrary: LibraryState) {
+    ++refreshGenerationRef.current;
+    const nextWatermarks: LibraryWatermarks = {
+      media: latestRecordKey(nextLibrary.media),
+      albums: latestRecordKey(nextLibrary.albums),
+      memberships: latestRecordKey(nextLibrary.memberships),
+    };
+    libraryRef.current = nextLibrary;
+    watermarksRef.current = nextWatermarks;
+    watermarkRef.current = nextWatermarks.media;
+    setLibrary(nextLibrary);
+    writeLibrarySnapshot(session.did, spaceUri, {
+      ...nextLibrary,
+      refreshedAt: new Date().toISOString(),
+      ...(nextWatermarks.media ? { watermark: nextWatermarks.media } : {}),
+      watermarks: nextWatermarks,
+    });
+    await prunePreviewCache(new Set(nextLibrary.media.map((item) => item.previewCid)));
+    if (libraryIndexCollection) {
+      await publishRemoteLibraryIndex(
+        agent,
+        { space: spaceUri, repo: session.did, indexCollection: libraryIndexCollection },
+        {
+          formatVersion: 1,
+          generatedAt: new Date().toISOString(),
+          ...(nextWatermarks.media ? { watermark: nextWatermarks.media } : {}),
+          watermarks: nextWatermarks,
+          ...nextLibrary,
+        },
+      );
+    }
   }
 
   async function createAlbum(event: FormEvent<HTMLFormElement>) {
@@ -1227,10 +1418,13 @@ export function PrivateLibrary({
       for (const uri of targetUris) {
         await deleteSpaceRecord(agent, libraryMediaCollection, uri);
       }
+      await commitLocalLibrary(
+        agent,
+        removeMediaFromLibrary(libraryRef.current, targetSet),
+      );
       if (activeMediaUri && targetSet.has(activeMediaUri)) setActiveMediaUri(undefined);
       setSelectedUris(EMPTY_SELECTION);
       setPendingDeleteUris(undefined);
-      await refresh();
     });
   }
 
@@ -1273,14 +1467,21 @@ export function PrivateLibrary({
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          <details className="upload-drawer">
+          <details
+            className="upload-drawer"
+            open={uploadDrawerOpen}
+            onToggle={(event) => setUploadDrawerOpen(event.currentTarget.open)}
+          >
             <summary>Upload</summary>
             <PrivateImageUpload
               libraryMediaCollection={libraryMediaCollection}
               session={session}
               spaceUri={spaceUri}
               transferEventCollection={transferEventCollection}
-              onUploaded={refresh}
+              onUploaded={() => {
+                setUploadDrawerOpen(false);
+                void refresh();
+              }}
             />
           </details>
           <button

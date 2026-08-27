@@ -62,12 +62,27 @@ export function createAlphaLexiconSchemas(namespaceAuthority: string): readonly 
           nsids.libraryMedia,
           nsids.libraryAlbum,
           nsids.libraryMembership,
+          nsids.libraryIndex,
           nsids.publicationJob,
           nsids.transferEvent,
         ],
       },
     },
   };
+
+  const libraryIndex = record(
+    nsids.libraryIndex,
+    "A private snapshot index and watermark pointer for fast Library synchronization.",
+    ["formatVersion", "itemCount", "updatedAt", "watermark", "blob"],
+    {
+      formatVersion: formatVersion(),
+      itemCount: { type: "integer", minimum: 0 },
+      updatedAt: datetime(),
+      watermark: { type: "string", maxLength: 200 },
+      blob: { type: "blob", accept: ["application/json"], maxSize: 25 * 1024 * 1024 },
+    },
+    "literal:current",
+  );
 
   const libraryMedia = record(
     nsids.libraryMedia,
@@ -265,6 +280,7 @@ export function createAlphaLexiconSchemas(namespaceAuthority: string): readonly 
     libraryMedia,
     libraryAlbum,
     libraryMembership,
+    libraryIndex,
     publicationJob,
     transferEvent,
     publishedMedia,

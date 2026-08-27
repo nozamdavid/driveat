@@ -19,6 +19,7 @@ export type OAuthPermissionConfiguration =
       Readonly<{
         accountCollection: string;
         albumCollection: string;
+        libraryIndexCollection: string;
         libraryMediaCollection: string;
         membershipCollection: string;
         mode: "gallery";
@@ -41,6 +42,7 @@ export function resolveOAuthPermissionConfiguration(
     mode: "gallery",
     accountCollection: nsids.account,
     albumCollection: nsids.libraryAlbum,
+    libraryIndexCollection: nsids.libraryIndex,
     libraryMediaCollection: nsids.libraryMedia,
     membershipCollection: nsids.libraryMembership,
     personalSpaceType: nsids.personalLibrarySpace,

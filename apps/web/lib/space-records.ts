@@ -97,8 +97,12 @@ export async function listAllSpaceRecords(
     );
     for (const record of response.data.records) {
       if (!record.value) continue;
+      const uri =
+        "uri" in record && typeof record.uri === "string"
+          ? record.uri
+          : `${target.space}/${target.repo}/${record.collection ?? target.collection}/${record.rkey}`;
       records.push({
-        uri: `${target.space}/${target.repo}/${record.collection}/${record.rkey}`,
+        uri,
         cid: record.cid,
         value: record.value,
       });

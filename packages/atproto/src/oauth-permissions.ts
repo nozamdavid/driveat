@@ -9,6 +9,7 @@ export const GALLERY_BLOB_MIME_TYPES = [
   "image/gif",
   "image/avif",
   "video/mp4",
+  "application/json",
 ] as const;
 
 export type GalleryPermissionNsids = Readonly<{
@@ -17,6 +18,7 @@ export type GalleryPermissionNsids = Readonly<{
   libraryAlbum: string;
   libraryMedia: string;
   libraryMembership: string;
+  libraryIndex: string;
   personalLibrarySpace: string;
   publicationJob: string;
   publishedAlbum: string;
@@ -61,6 +63,7 @@ export function buildGalleryOAuthPermissions(
     nsids.libraryMedia,
     nsids.libraryAlbum,
     nsids.libraryMembership,
+    nsids.libraryIndex,
     nsids.publicationJob,
     nsids.transferEvent,
   ]) {

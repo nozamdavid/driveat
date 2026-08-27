@@ -422,43 +422,6 @@ button:disabled {
   padding: 0.65rem;
 }
 
-.upload-debug {
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--rule);
-}
-
-.upload-debug dl {
-  display: grid;
-  gap: 0.55rem;
-  margin: 0 0 1rem;
-}
-
-.upload-debug dl div {
-  display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr);
-  gap: 0.75rem;
-}
-
-.upload-debug dt {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.upload-debug dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.72rem;
-}
-
-.upload-debug a {
-  color: var(--focus);
-  font-size: 0.85rem;
-  font-weight: 700;
-}
-
 .library-workspace {
   width: min(100%, 100rem);
   margin: 0 auto;
@@ -1634,11 +1597,6 @@ footer p {
 
   footer {
     flex-direction: column;
-  }
-
-  .upload-debug dl div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.15rem;
   }
 
   .album-sidebar {

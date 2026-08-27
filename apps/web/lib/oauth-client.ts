@@ -38,5 +38,23 @@ export function getOAuthClient(): Promise<BrowserOAuthClient> {
 
 export const initializeOAuth = createOAuthInitializer(async () => {
   const client = await getOAuthClient();
-  return retryDpopNonceChallenge(() => client.init());
+  const result = await retryDpopNonceChallenge(() => client.init());
+  if (result?.session) {
+    try {
+      const token = await result.session.getTokenInfo();
+      const scope = String(token.scope ?? "");
+      if (
+        oauthPermissionConfiguration.mode === "gallery" &&
+        !scope.includes("application/json") &&
+        !scope.includes("application%2Fjson")
+      ) {
+        console.warn("[OAuth] Outdated session scope detected (missing application/json). Signing out for re-authorization.");
+        await result.session.signOut().catch(() => undefined);
+        return undefined;
+      }
+    } catch {
+      // Proceed if token inspection fails
+    }
+  }
+  return result;
 });

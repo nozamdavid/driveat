@@ -11,7 +11,7 @@ describe("createLexiconPublicationRecords", () => {
       ({ rkey }) => rkey === "am.noz.atgallery.alpha.personalLibrary",
     );
 
-    expect(records).toHaveLength(11);
+    expect(records).toHaveLength(12);
     expect(space?.collection).toBe("com.atproto.lexicon.schema");
     expect(space?.record.$type).toBe("com.atproto.lexicon.schema");
     expect(space?.record.defs.main?.type).toBe("space");

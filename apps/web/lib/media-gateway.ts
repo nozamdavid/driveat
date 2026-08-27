@@ -4,12 +4,16 @@ export type DelegationClient =
     }>
   | ((pathname: string, init?: RequestInit) => Promise<Response>);
 
-async function obtainDelegationToken(client: DelegationClient, space: string): Promise<string> {
+async function obtainDelegationToken(
+  client: DelegationClient,
+  space: string,
+  signal?: AbortSignal,
+): Promise<string> {
   if (typeof client === "function") {
     const query = new URLSearchParams({ space });
     const response = await client(
       `/xrpc/com.atproto.space.getDelegationToken?${query.toString()}`,
-      { method: "GET" },
+      { method: "GET", ...(signal ? { signal } : {}) },
     );
     if (!response.ok) {
       const errorBody = (await response.json().catch(() => ({}))) as {
@@ -62,9 +66,11 @@ export async function connectMediaGateway(input: Readonly<{
   repo: string;
   space: string;
 }>): Promise<MediaGatewayAccess> {
-  const delegationToken = await obtainDelegationToken(input.delegationClient, input.space);
+  const signal = AbortSignal.timeout(15_000);
+  const delegationToken = await obtainDelegationToken(input.delegationClient, input.space, signal);
   const response = await fetch(`${input.baseUrl}/v1/spaces/connect`, {
     method: "POST",
+    signal,
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ space: input.space, repo: input.repo, delegationToken }),
   });

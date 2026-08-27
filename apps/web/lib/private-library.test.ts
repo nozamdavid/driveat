@@ -4,6 +4,8 @@ import {
   groupMediaByDay,
   findDuplicateMedia,
   indexLibraryRecords,
+  removeMediaFromLibrary,
+  latestRecordKey,
   nextMembershipPosition,
   recordKeyFromAtUri,
 } from "./private-library";
@@ -56,6 +58,25 @@ describe("indexLibraryRecords", () => {
     expect(result.media[0]?.metadata).toEqual({ captureTime: "2026-08-20T12:00:00.000Z" });
     expect(result.albums[0]?.title).toBe("Summer");
     expect(result.memberships[0]?.position).toBe(0);
+  });
+});
+
+describe("removeMediaFromLibrary", () => {
+  it("removes media and its album memberships without touching other records", () => {
+    const media = [
+      { uri: "at://media/keep", cid: "keep", filename: "keep.jpg", mime: "image/jpeg", size: 1, previewCid: "preview-keep", createdAt: "2026-01-01T00:00:00Z" },
+      { uri: "at://media/delete", cid: "delete", filename: "delete.jpg", mime: "image/jpeg", size: 1, previewCid: "preview-delete", createdAt: "2026-01-01T00:00:00Z" },
+    ];
+    const memberships = [
+      { uri: "at://membership/keep", cid: "mk", albumUri: "at://album/a", mediaUri: "at://media/keep", position: 0, addedAt: "2026-01-01T00:00:00Z" },
+      { uri: "at://membership/delete", cid: "md", albumUri: "at://album/a", mediaUri: "at://media/delete", position: 1, addedAt: "2026-01-01T00:00:00Z" },
+    ];
+    const result = removeMediaFromLibrary(
+      { albums: [], media, memberships },
+      new Set(["at://media/delete"]),
+    );
+    expect(result.media.map((item) => item.uri)).toEqual(["at://media/keep"]);
+    expect(result.memberships.map((item) => item.uri)).toEqual(["at://membership/keep"]);
   });
 });
 
@@ -189,5 +210,17 @@ describe("membership helpers", () => {
     expect(recordKeyFromAtUri("at://did:plc:alice/space/type/library/did:plc:alice/x/3abc")).toBe(
       "3abc",
     );
+  });
+
+  it("finds the newest (highest TID) record key across items", () => {
+    expect(
+      latestRecordKey([
+        { uri: "at://space/repo/col/3lb1" },
+        { uri: "at://space/repo/col/3lb5" },
+        { uri: "at://space/repo/col/3lb3" },
+      ]),
+    ).toBe("3lb5");
+
+    expect(latestRecordKey([])).toBeUndefined();
   });
 });

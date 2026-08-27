@@ -8,7 +8,9 @@
 export type BlobCacheStore = {
   clear(): Promise<void>;
   get(key: string): Promise<unknown>;
+  keys(): Promise<readonly string[]>;
   put(key: string, blob: Blob): Promise<void>;
+  remove(key: string): Promise<void>;
 };
 
 export type IndexedDbBlobCacheOptions = Readonly<{
@@ -83,10 +85,22 @@ export function createIndexedDbBlobCache(options: IndexedDbBlobCacheOptions): Bl
       const transaction = database.transaction(options.store, "readonly");
       return requestAsPromise(transaction.objectStore(options.store).get(key));
     },
+    async keys(): Promise<readonly string[]> {
+      const database = await openDatabase(options.database, options.store);
+      const transaction = database.transaction(options.store, "readonly");
+      const keys = await requestAsPromise(transaction.objectStore(options.store).getAllKeys());
+      return keys.filter((key): key is string => typeof key === "string");
+    },
     async put(key: string, blob: Blob): Promise<void> {
       const database = await openDatabase(options.database, options.store);
       const transaction = database.transaction(options.store, "readwrite");
       transaction.objectStore(options.store).put(blob, key);
+      await transactionDone(transaction);
+    },
+    async remove(key: string): Promise<void> {
+      const database = await openDatabase(options.database, options.store);
+      const transaction = database.transaction(options.store, "readwrite");
+      transaction.objectStore(options.store).delete(key);
       await transactionDone(transaction);
     },
   };

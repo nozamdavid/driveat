@@ -1,0 +1,32 @@
+{
+  "lexicon": 1,
+  "id": "am.noz.atgallery.account",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A public self-declaration record for an account using ATGallery.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": [
+          "formatVersion",
+          "createdAt"
+        ],
+        "properties": {
+          "formatVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "client": {
+            "type": "string",
+            "maxLength": 100
+          }
+        }
+      }
+    }
+  }
+}

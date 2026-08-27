@@ -26,45 +26,47 @@ export async function recentTransferEvents(
   const cutoff = now.getTime() - ROLLING_QUOTA_WINDOW_MS;
   const events: TransferEvent[] = [];
 
-  await listAllSpaceRecords(
-    agent,
-    { collection, repo, space },
-    {
-      maxPages: MAX_TRANSFER_EVENT_PAGES,
-      pageLimitMessage: "Transfer history exceeded the upload safety scan limit.",
-      onPage: (page) => {
-        let reachedCutoff = false;
-        for (const entry of page) {
-          const value = entry.value;
-          if (!value) continue;
-          const completedAt = typeof value.createdAt === "string" ? new Date(value.createdAt) : undefined;
-          if (!completedAt || !Number.isFinite(completedAt.getTime())) continue;
-          if (completedAt.getTime() > now.getTime()) continue;
-          if (completedAt.getTime() < cutoff) {
-            reachedCutoff = true;
-            continue;
-          }
-
-          const blobOperations = nonNegativeInteger(value.blobOperations);
-          const items = nonNegativeInteger(value.itemCount);
-          const transferredBytes = nonNegativeInteger(value.logicalBytes);
-          const wireOperation = value.operation;
-          const operation =
-            typeof wireOperation === "string" ? DOMAIN_OPERATION[wireOperation] : undefined;
-          if (
-            blobOperations === undefined ||
-            items === undefined ||
-            transferredBytes === undefined ||
-            operation === undefined
-          ) {
-            continue;
-          }
-          events.push({ blobOperations, completedAt, items, operation, transferredBytes });
-        }
-        return !reachedCutoff;
+  try {
+    const records = await listAllSpaceRecords(
+      agent,
+      { collection, repo, space },
+      {
+        maxPages: MAX_TRANSFER_EVENT_PAGES,
+        onPage: (page) => !page.some((entry) => {
+          const value = entry.value as Record<string, unknown> | undefined;
+          const createdAt = typeof value?.createdAt === "string" ? Date.parse(value.createdAt) : NaN;
+          return Number.isFinite(createdAt) && createdAt < cutoff;
+        }),
       },
-    },
-  );
+    );
+
+    for (const entry of records) {
+      const value = entry.value as Record<string, unknown> | undefined;
+      if (!value) continue;
+      const completedAt = typeof value.createdAt === "string" ? new Date(value.createdAt) : undefined;
+      if (!completedAt || !Number.isFinite(completedAt.getTime())) continue;
+      if (completedAt.getTime() > now.getTime()) continue;
+      if (completedAt.getTime() < cutoff) break;
+
+      const blobOperations = nonNegativeInteger(value.blobOperations);
+      const items = nonNegativeInteger(value.itemCount);
+      const transferredBytes = nonNegativeInteger(value.logicalBytes);
+      const wireOperation = value.operation;
+      const operation =
+        typeof wireOperation === "string" ? DOMAIN_OPERATION[wireOperation] : undefined;
+      if (
+        blobOperations === undefined ||
+        items === undefined ||
+        transferredBytes === undefined ||
+        operation === undefined
+      ) {
+        continue;
+      }
+      events.push({ blobOperations, completedAt, items, operation, transferredBytes });
+    }
+  } catch {
+    // Quota scan is advisory
+  }
 
   return events;
 }

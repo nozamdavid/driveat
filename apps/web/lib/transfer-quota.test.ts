@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { transferQuotaStatus } from "./transfer-quota";
+import { recentTransferEvents, transferQuotaStatus } from "./transfer-quota";
 
 describe("transferQuotaStatus", () => {
   it("reports rolling usage and the first time capacity returns", () => {
@@ -33,5 +33,46 @@ describe("transferQuotaStatus", () => {
     const status = transferQuotaStatus([], new Date("2026-08-21T12:00:00.000Z"));
     expect(status.quota.usage.transferredBytes).toBe(0);
     expect(status.nextRecoveryAt).toBeUndefined();
+  });
+});
+
+describe("recentTransferEvents", () => {
+  it("paginates until it reaches an event outside the rolling window", async () => {
+    const recentValue = {
+      blobOperations: 2,
+      itemCount: 1,
+      logicalBytes: 10,
+      operation: "ingest",
+      createdAt: "2026-08-27T11:00:00.000Z",
+    };
+    const listRecords = vi.fn()
+      .mockResolvedValueOnce({
+        data: {
+          records: Array.from({ length: 100 }, (_, index) => ({ rkey: `new-${index}`, cid: `cid-${index}`, collection: "events", value: recentValue })),
+          cursor: "page-2",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          records: [
+            { rkey: "new-100", cid: "cid-100", collection: "events", value: recentValue },
+            { rkey: "old", cid: "cid-old", collection: "events", value: { ...recentValue, createdAt: "2026-08-25T11:00:00.000Z" } },
+          ],
+          cursor: "unused-page",
+        },
+      });
+    const agent = { com: { atproto: { space: { listRecords } } } } as any;
+
+    const events = await recentTransferEvents(
+      agent,
+      "space:1",
+      "did:alice",
+      "events",
+      new Date("2026-08-27T12:00:00.000Z"),
+    );
+
+    expect(events).toHaveLength(101);
+    expect(listRecords).toHaveBeenCalledTimes(2);
+    expect(listRecords.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ cursor: "page-2", reverse: true }));
   });
 });

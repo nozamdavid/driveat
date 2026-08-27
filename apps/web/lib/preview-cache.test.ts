@@ -4,6 +4,7 @@ import { createIndexedDbBlobCache } from "./idb-blob-cache";
 import {
   cachePreviewBlob,
   clearPreviewCache,
+  prunePreviewCache,
   purgeLegacyPreviewDataUrls,
   readCachedPreview,
 } from "./preview-cache";
@@ -19,8 +20,14 @@ function memoryStore(): PreviewCacheStore & { entries: Map<string, unknown> } {
     async get(key) {
       return entries.get(key);
     },
+    async keys() {
+      return [...entries.keys()];
+    },
     async put(key, blob) {
       entries.set(key, blob);
+    },
+    async remove(key) {
+      entries.delete(key);
     },
   };
 }
@@ -33,7 +40,13 @@ function failingStore(): PreviewCacheStore {
     async get() {
       throw new Error("storage unavailable");
     },
+    async keys() {
+      throw new Error("storage unavailable");
+    },
     async put() {
+      throw new Error("storage unavailable");
+    },
+    async remove() {
       throw new Error("storage unavailable");
     },
   };
@@ -89,6 +102,15 @@ describe("preview cache", () => {
     await clearPreviewCache(store);
     await expect(readCachedPreview("cid-a", store)).resolves.toBeUndefined();
     await expect(readCachedPreview("cid-b", store)).resolves.toBeUndefined();
+  });
+
+  it("removes cached previews whose media records were deleted", async () => {
+    const store = memoryStore();
+    await cachePreviewBlob("keep", webp(8), store);
+    await cachePreviewBlob("deleted", webp(9), store);
+    await prunePreviewCache(new Set(["keep"]), store);
+    await expect(readCachedPreview("keep", store)).resolves.toBeInstanceOf(Blob);
+    await expect(readCachedPreview("deleted", store)).resolves.toBeUndefined();
   });
 
   it("degrades to a no-op without any backing storage", async () => {

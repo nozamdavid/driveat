@@ -13,14 +13,24 @@ export type LibrarySnapshotStorage = Pick<
   "getItem" | "key" | "length" | "removeItem" | "setItem"
 >;
 
+export type LibraryWatermarks = Readonly<{
+  albums?: string | undefined;
+  media?: string | undefined;
+  memberships?: string | undefined;
+}>;
+
 export type LibrarySnapshot = Readonly<{
   albums: readonly LibraryAlbum[];
   media: readonly LibraryMedia[];
   memberships: readonly LibraryMembership[];
-  pdsUrl?: string;
+  pdsUrl?: string | undefined;
+  refreshedAt?: string | undefined;
+  watermark?: string | undefined;
+  watermarks?: LibraryWatermarks | undefined;
 }>;
 
 const SNAPSHOT_KEY = "atgallery.library.snapshot.v1";
+export const LIBRARY_SNAPSHOT_FRESHNESS_MS = 5 * 60 * 1000;
 
 function storageKey(did: string, spaceUri: string): string {
   return `${SNAPSHOT_KEY}.${did}.${spaceUri}`;
@@ -30,6 +40,16 @@ function defaultStore(): LibrarySnapshotStorage | undefined {
   return (globalThis as { localStorage?: LibrarySnapshotStorage }).localStorage;
 }
 
+function validWatermarks(value: unknown): LibraryWatermarks | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  return {
+    albums: typeof v.albums === "string" ? v.albums : undefined,
+    media: typeof v.media === "string" ? v.media : undefined,
+    memberships: typeof v.memberships === "string" ? v.memberships : undefined,
+  };
+}
+
 function validSnapshot(value: unknown): LibrarySnapshot | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
@@ -37,13 +57,28 @@ function validSnapshot(value: unknown): LibrarySnapshot | undefined {
     Array.isArray(record[field]),
   );
   const pdsUrlValid = record.pdsUrl === undefined || typeof record.pdsUrl === "string";
-  if (!arraysValid || !pdsUrlValid) return undefined;
+  const refreshedAtValid = record.refreshedAt === undefined || typeof record.refreshedAt === "string";
+  const watermarkValid = record.watermark === undefined || typeof record.watermark === "string";
+  if (!arraysValid || !pdsUrlValid || !refreshedAtValid || !watermarkValid) return undefined;
+  const parsedWatermarks = validWatermarks(record.watermarks);
   return {
     albums: record.albums as readonly LibraryAlbum[],
     media: record.media as readonly LibraryMedia[],
     memberships: record.memberships as readonly LibraryMembership[],
     ...(typeof record.pdsUrl === "string" ? { pdsUrl: record.pdsUrl } : {}),
+    ...(typeof record.refreshedAt === "string" ? { refreshedAt: record.refreshedAt } : {}),
+    ...(typeof record.watermark === "string" ? { watermark: record.watermark } : {}),
+    ...(parsedWatermarks ? { watermarks: parsedWatermarks } : {}),
   };
+}
+
+export function isFreshLibrarySnapshot(
+  snapshot: LibrarySnapshot | undefined,
+  now = new Date(),
+): boolean {
+  if (!snapshot?.refreshedAt) return false;
+  const refreshedAt = Date.parse(snapshot.refreshedAt);
+  return Number.isFinite(refreshedAt) && now.getTime() - refreshedAt <= LIBRARY_SNAPSHOT_FRESHNESS_MS;
 }
 
 export function readLibrarySnapshot(

@@ -53,6 +53,22 @@ export async function clearPreviewCache(store?: PreviewCacheStore): Promise<void
   }
 }
 
+export async function prunePreviewCache(
+  retainedCids: ReadonlySet<string>,
+  store?: PreviewCacheStore,
+): Promise<void> {
+  try {
+    const resolved = store ?? defaultStore();
+    if (!resolved) return;
+    const cachedCids = await resolved.keys();
+    await Promise.all(
+      cachedCids.filter((cid) => !retainedCids.has(cid)).map((cid) => resolved.remove(cid)),
+    );
+  } catch {
+    // Pruning is advisory; stale bytes can be reclaimed on the next refresh.
+  }
+}
+
 /**
  * Removes data-URL entries left by the superseded localStorage cache so the
  * freed quota returns to the origin.

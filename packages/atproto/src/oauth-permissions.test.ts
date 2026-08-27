@@ -14,6 +14,7 @@ const nsids: GalleryPermissionNsids = {
   libraryAlbum: "com.example.atgallery.alpha.libraryAlbum",
   libraryMedia: "com.example.atgallery.alpha.libraryMedia",
   libraryMembership: "com.example.atgallery.alpha.libraryMembership",
+  libraryIndex: "com.example.atgallery.alpha.libraryIndex",
   personalLibrarySpace: "com.example.atgallery.alpha.personalLibrary",
   publicationJob: "com.example.atgallery.alpha.publicationJob",
   publishedAlbum: "com.example.atgallery.alpha.publishedAlbum",
@@ -60,7 +61,7 @@ describe("buildGalleryOAuthPermissions", () => {
 describe("GALLERY_BLOB_MIME_TYPES", () => {
   it("stays equal to the domain policy's accepted image and video MIME sets", () => {
     expect([...GALLERY_BLOB_MIME_TYPES].sort()).toEqual(
-      [...ACCEPTED_IMAGE_MIME_TYPES, ...ACCEPTED_VIDEO_MIME_TYPES].sort(),
+      [...ACCEPTED_IMAGE_MIME_TYPES, ...ACCEPTED_VIDEO_MIME_TYPES, "application/json"].sort(),
     );
   });
 });

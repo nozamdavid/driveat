@@ -4,6 +4,7 @@ export type ExperimentalNsids = Readonly<{
   libraryAlbum: string;
   libraryMedia: string;
   libraryMembership: string;
+  libraryIndex: string;
   personalLibrarySpace: string;
   publicationJob: string;
   publishedAlbum: string;
@@ -31,6 +32,7 @@ export function createExperimentalNsids(authority: string): ExperimentalNsids {
     libraryAlbum: `${prefix}.libraryAlbum`,
     libraryMedia: `${prefix}.libraryMedia`,
     libraryMembership: `${prefix}.libraryMembership`,
+    libraryIndex: `${prefix}.libraryIndex`,
     personalLibrarySpace: `${prefix}.personalLibrary`,
     publicationJob: `${prefix}.publicationJob`,
     publishedAlbum: `${prefix}.publishedAlbum`,

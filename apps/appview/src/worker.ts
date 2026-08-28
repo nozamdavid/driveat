@@ -9,6 +9,7 @@ import type { Env, MediaMapping, SessionClaims } from "./types.js";
 export { MediaRegistry, SpaceCredentialBroker };
 
 const ISSUER = "atgallery-media-gateway";
+const MAX_MEDIA_BATCH_ITEMS = 10;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -165,7 +166,7 @@ async function serveMediaBatch(request: Request, env: Env): Promise<Response> {
 
   if (
     rawEntries.length === 0 ||
-    rawEntries.length > 5 ||
+    rawEntries.length > MAX_MEDIA_BATCH_ITEMS ||
     new Set(rawEntries.map((e) => e.mediaId)).size !== rawEntries.length
   ) {
     throw new HttpError(400, "invalid-media-batch");

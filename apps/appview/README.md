@@ -9,7 +9,7 @@ This first test build intentionally has no shared image cache. Every request is 
 the opaque media mapping is read, the upstream is derived from DID documents, and a successful blob
 is MIME-, size-, and CID-checked before being returned with `private, no-store`.
 
-Visible preview cache misses are requested through `POST /v1/media/batch` in groups of at most five.
+Visible preview cache misses are requested through `POST /v1/media/batch` in groups of at most ten.
 The response is a compact length-prefixed binary bundle with per-image success or error metadata.
 Original downloads remain individual requests. IndexedDB hits never call either media endpoint.
 

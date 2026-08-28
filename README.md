@@ -1,6 +1,6 @@
-# ATGallery
+# ATStorage
 
-ATGallery is an experimental AT Protocol media Library and public gallery publisher. Exact originals live in an owner-only permissioned Space; explicit public album snapshots live in the user's public account repo.
+ATStorage is an experimental AT Protocol media Library and public gallery publisher. Exact originals live in an owner-only permissioned Space; explicit public album snapshots live in the user's public account repo.
 
 The agreed scope and constraints are recorded in [the product contract](./docs/PRODUCT_CONTRACT.md). Project terminology is defined in [the domain glossary](./CONTEXT.md).
 Lexicon namespace selection and publication are specified in [the authority runbook](./docs/AUTHORITY.md).
@@ -29,7 +29,7 @@ The hosted alpha remains blocked on selecting a Lexicon authority/domain plus ho
 
 ## Local OAuth
 
-The web app implements OAuth through AT Protocol's localhost client. Without an NSID authority it requests identity access only. When `NEXT_PUBLIC_ATGALLERY_NSID_AUTHORITY` is configured, it requests narrow access to ATGallery's explicit public collections, accepted media blob types up to 50 MiB, and the user's personal ATGallery Space. It never requests `transition:generic` or wildcard repo/collection access.
+The web app implements OAuth through AT Protocol's localhost client. Without an NSID authority it requests identity access only. When `NEXT_PUBLIC_ATGALLERY_NSID_AUTHORITY` is configured, it requests narrow access to ATStorage's explicit public collections, accepted media blob types up to 50 MiB, and the user's personal ATStorage Space. It never requests `transition:generic` or wildcard repo/collection access.
 
 1. Copy `apps/web/.env.example` to `apps/web/.env.local`. The designated alpha PDS is already configured.
 2. Run `pnpm dev`.

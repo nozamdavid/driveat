@@ -4,8 +4,12 @@ import { LIBRARY_LIMITS, ROLLING_QUOTA_LIMITS } from "@atgallery/domain";
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import {
+  type CSSProperties,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -14,6 +18,15 @@ import {
 } from "react";
 
 import { eligibleAlbumsForTargets, unmemberedTargetUris } from "../../lib/album-picker";
+import {
+  clampTimelineIndex,
+  sparseTimelineIndexes,
+  timelineIndexAtPosition,
+  timelineMonthLabel,
+  timelinePosition,
+  timelineUsesMonthLabels,
+  timelineYearLabel,
+} from "../../lib/date-timeline";
 import { errorMessage } from "../../lib/error-message";
 import {
   canUseLibrarySnapshot,
@@ -23,7 +36,11 @@ import {
 } from "../../lib/library-snapshot";
 import { pruneSelectedUris, toggleSelectedUri } from "../../lib/media-selection";
 import { clampMenuPosition, type Point, type Size } from "../../lib/menu-position";
-import { fetchGatewayBlob, type MediaGatewayAccess } from "../../lib/media-gateway";
+import {
+  fetchGatewayBlob,
+  MEDIA_BATCH_SIZE,
+  type MediaGatewayAccess,
+} from "../../lib/media-gateway";
 import {
   getCachedOriginal,
   isOriginalCached,
@@ -38,6 +55,7 @@ import {
 import { useInView } from "../../lib/use-in-view";
 import {
   groupMediaByDay,
+  appendAlbumsAndMembershipsToLibrary,
   appendMediaToLibrary,
   findDuplicateMedia,
   indexLibraryRecords,
@@ -132,16 +150,156 @@ function formatRecoveryTime(date: Date): string {
   }).format(date);
 }
 
+type TimelineGroup = Readonly<{ key: string; label: string }>;
+
+function DateTimeline({
+  groupElements,
+  groups,
+}: Readonly<{
+  groupElements: RefObject<Map<string, HTMLElement>>;
+  groups: readonly TimelineGroup[];
+}>) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const frameRef = useRef<number | undefined>(undefined);
+  const draggingRef = useRef(false);
+
+  useEffect(() => {
+    if (groups.length < 2) return;
+
+    const updateActiveGroup = () => {
+      frameRef.current = undefined;
+      const atDocumentEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+      if (atDocumentEnd) {
+        setActiveIndex(groups.length - 1);
+        return;
+      }
+      const anchor = window.innerHeight * 0.28;
+      let nextIndex = 0;
+      for (let index = 0; index < groups.length; index += 1) {
+        const element = groupElements.current.get(groups[index]!.key);
+        if (!element || element.getBoundingClientRect().top > anchor) break;
+        nextIndex = index;
+      }
+      setActiveIndex(nextIndex);
+    };
+    const scheduleUpdate = () => {
+      if (frameRef.current === undefined) frameRef.current = window.requestAnimationFrame(updateActiveGroup);
+    };
+
+    updateActiveGroup();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      if (frameRef.current !== undefined) window.cancelAnimationFrame(frameRef.current);
+    };
+  }, [groupElements, groups]);
+
+  if (groups.length < 2) return null;
+
+  const boundedActiveIndex = clampTimelineIndex(activeIndex, groups.length);
+  const moveTo = (index: number, behavior: ScrollBehavior) => {
+    const nextIndex = clampTimelineIndex(index, groups.length);
+    setActiveIndex(nextIndex);
+    groupElements.current.get(groups[nextIndex]!.key)?.scrollIntoView({ behavior, block: "start" });
+  };
+  const moveFromPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    moveTo(timelineIndexAtPosition((event.clientY - bounds.top) / bounds.height, groups.length), "auto");
+  };
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const jumps: Partial<Record<string, number>> = {
+      ArrowDown: 1,
+      ArrowRight: 1,
+      ArrowUp: -1,
+      ArrowLeft: -1,
+      PageDown: 5,
+      PageUp: -5,
+    };
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      moveTo(event.key === "Home" ? 0 : groups.length - 1, "smooth");
+      return;
+    }
+    const jump = jumps[event.key];
+    if (jump === undefined) return;
+    event.preventDefault();
+    moveTo(boundedActiveIndex + jump, "smooth");
+  };
+  const activeGroup = groups[boundedActiveIndex]!;
+  const useMonthLabels = timelineUsesMonthLabels(groups.map((group) => group.key));
+  const periodLabels = groups.map((group, index) =>
+    useMonthLabels
+      ? timelineMonthLabel(group.key, groups[index - 1]?.key)
+      : timelineYearLabel(group.key, groups[index - 1]?.key),
+  );
+  const visibleMarkerIndexes = new Set(sparseTimelineIndexes(
+    groups.length,
+    [...periodLabels.flatMap((label, index) => label ? [index] : []), boundedActiveIndex],
+  ));
+
+  return (
+    <nav className="date-timeline" aria-label="Photo date timeline">
+      <output
+        className="date-timeline-current"
+        style={{ "--timeline-position": `${timelinePosition(boundedActiveIndex, groups.length)}%` } as CSSProperties}
+      >
+        {activeGroup.label}
+      </output>
+      <div
+        className="date-timeline-rail"
+        role="slider"
+        tabIndex={0}
+        aria-label="Jump to a photo date"
+        aria-valuemin={1}
+        aria-valuemax={groups.length}
+        aria-valuenow={boundedActiveIndex + 1}
+        aria-valuetext={activeGroup.label}
+        onKeyDown={handleKeyDown}
+        onPointerDown={(event) => {
+          draggingRef.current = true;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          moveFromPointer(event);
+        }}
+        onPointerMove={(event) => {
+          if (draggingRef.current) moveFromPointer(event);
+        }}
+        onPointerUp={(event) => {
+          draggingRef.current = false;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={() => { draggingRef.current = false; }}
+      >
+        <span className="date-timeline-line" aria-hidden="true" />
+        {groups.map((group, index) => {
+          if (!visibleMarkerIndexes.has(index)) return null;
+          const periodLabel = periodLabels[index];
+          const style = { "--timeline-position": `${timelinePosition(index, groups.length)}%` } as CSSProperties;
+          return (
+            <span className="date-timeline-mark" style={style} key={group.key} aria-hidden="true">
+              {periodLabel ? <span className="date-timeline-period">{periodLabel}</span> : null}
+              <span className={index === boundedActiveIndex ? "date-timeline-dot active" : "date-timeline-dot"} />
+            </span>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 // The carousel and grid both render the cached WebP preview; originals are
 // only ever fetched for explicit downloads.
 function PrivatePreviewImage({
   className,
   eager = false,
+  fetchEnabled = true,
   media,
   mediaGatewayAccess,
 }: Readonly<{
   className?: string | undefined;
   eager?: boolean | undefined;
+  fetchEnabled?: boolean | undefined;
   media: LibraryMedia;
   mediaGatewayAccess?: MediaGatewayAccess | undefined;
 }>) {
@@ -149,7 +307,7 @@ function PrivatePreviewImage({
   const [source, setSource] = useState<string>();
   const [failed, setFailed] = useState(false);
   const [targetRef, inView] = useInView({ disabled: eager || !!source });
-  const shouldFetch = eager || inView;
+  const shouldFetch = fetchEnabled && (eager || inView);
 
   useEffect(() => {
     let active = true;
@@ -163,12 +321,10 @@ function PrivatePreviewImage({
 
     void (async () => {
       try {
+        if (!shouldFetch) return;
         const cached = await readCachedPreview(media.previewCid);
         if (cached) {
           show(cached);
-          return;
-        }
-        if (!shouldFetch) {
           return;
         }
         if (!mediaGatewayAccess) {
@@ -947,12 +1103,49 @@ export function PrivateLibrary({
         : [{ key: selectedAlbum, label: "", items: visibleMedia }],
     [selectedAlbum, visibleMedia],
   );
+  const mediaGroupElementsRef = useRef(new Map<string, HTMLElement>());
   // The flattened group order is the single source of truth for the grid and
   // the carousel, so next/previous always lands on the visually adjacent photo.
   const orderedMedia = useMemo(
     () => mediaGroups.flatMap((group) => group.items),
     [mediaGroups],
   );
+  // Seed one complete gateway batch even when the viewport initially shows
+  // fewer cards. Remaining previews continue to load lazily as they approach.
+  const [initialPreviewBatch, setInitialPreviewBatch] = useState<Readonly<{
+    access: MediaGatewayAccess;
+    media: readonly LibraryMedia[];
+    uris: ReadonlySet<string>;
+  }>>();
+
+  useEffect(() => {
+    let active = true;
+    if (!mediaGatewayAccess) return () => { active = false; };
+
+    void (async () => {
+      const misses = new Set<string>();
+      const probeSize = MEDIA_BATCH_SIZE * 2;
+      for (let offset = 0; offset < orderedMedia.length && misses.size < MEDIA_BATCH_SIZE; offset += probeSize) {
+        const candidates = orderedMedia.slice(offset, offset + probeSize);
+        const cached = await Promise.all(candidates.map((item) => readCachedPreview(item.previewCid)));
+        for (let index = 0; index < candidates.length && misses.size < MEDIA_BATCH_SIZE; index += 1) {
+          if (!cached[index]) misses.add(candidates[index]!.uri);
+        }
+      }
+      if (!active) return;
+      setInitialPreviewBatch({ access: mediaGatewayAccess, media: orderedMedia, uris: misses });
+    })();
+
+    return () => { active = false; };
+  }, [mediaGatewayAccess, orderedMedia]);
+  const currentInitialPreviewBatch =
+    initialPreviewBatch !== undefined &&
+    initialPreviewBatch.access === mediaGatewayAccess &&
+    initialPreviewBatch.media === orderedMedia
+      ? initialPreviewBatch
+      : undefined;
+  const initialPreviewBatchReady = currentInitialPreviewBatch !== undefined;
+  const initialPreviewUris = currentInitialPreviewBatch?.uris ?? EMPTY_SELECTION;
 
   const libraryStorageBytes = useMemo(
     () => privateLibraryStorageBytes(library.media),
@@ -1243,7 +1436,17 @@ export function PrivateLibrary({
       });
       setAlbumTitle("");
       setSelectedAlbum(response.data.uri);
-      await refresh();
+      await commitLocalLibrary(
+        agent,
+        appendAlbumsAndMembershipsToLibrary(libraryRef.current, {
+          albums: [{
+            uri: response.data.uri,
+            cid: response.data.cid,
+            title,
+            createdAt: now,
+          }],
+        }),
+      );
     });
   }
 
@@ -1291,10 +1494,16 @@ export function PrivateLibrary({
     closeContextMenu();
   }
 
-  async function createMemberships(agent: Agent, albumUri: string, mediaUris: readonly string[]) {
-    let position = nextMembershipPosition(library.memberships, albumUri);
+  async function createMemberships(
+    agent: Agent,
+    albumUri: string,
+    mediaUris: readonly string[],
+  ): Promise<readonly LibraryMembership[]> {
+    let position = nextMembershipPosition(libraryRef.current.memberships, albumUri);
+    const created: LibraryMembership[] = [];
     for (const mediaUri of mediaUris) {
-      await agent.com.atproto.space.createRecord({
+      const addedAt = new Date().toISOString();
+      const response = await agent.com.atproto.space.createRecord({
         space: spaceUri,
         repo: session.did,
         collection: membershipCollection,
@@ -1304,11 +1513,20 @@ export function PrivateLibrary({
           album: albumUri,
           media: mediaUri,
           position,
-          addedAt: new Date().toISOString(),
+          addedAt,
         },
+      });
+      created.push({
+        uri: response.data.uri,
+        cid: response.data.cid,
+        albumUri,
+        mediaUri,
+        position,
+        addedAt,
       });
       position += 1;
     }
+    return created;
   }
 
   async function pickExistingAlbum(album: LibraryAlbum) {
@@ -1321,10 +1539,13 @@ export function PrivateLibrary({
     if (missing.length === 0) return;
     await runMutation(async () => {
       const agent = new Agent(session);
-      await createMemberships(agent, album.uri, missing);
+      const memberships = await createMemberships(agent, album.uri, missing);
+      await commitLocalLibrary(
+        agent,
+        appendAlbumsAndMembershipsToLibrary(libraryRef.current, { memberships }),
+      );
       setPickerTargets(undefined);
       setSelectedUris(EMPTY_SELECTION);
-      await refresh();
     });
   }
 
@@ -1347,10 +1568,21 @@ export function PrivateLibrary({
           updatedAt: now,
         },
       });
-      await createMemberships(agent, response.data.uri, targets);
+      const memberships = await createMemberships(agent, response.data.uri, targets);
+      await commitLocalLibrary(
+        agent,
+        appendAlbumsAndMembershipsToLibrary(libraryRef.current, {
+          albums: [{
+            uri: response.data.uri,
+            cid: response.data.cid,
+            title,
+            createdAt: now,
+          }],
+          memberships,
+        }),
+      );
       setPickerTargets(undefined);
       setSelectedUris(EMPTY_SELECTION);
-      await refresh();
     });
   }
 
@@ -1523,7 +1755,7 @@ export function PrivateLibrary({
             disabled={mutating}
             onClick={openDuplicateChoice}
           >
-            Remove duplicates{duplicateMedia.length ? ` (${duplicateMedia.length})` : ""}
+            Duplicates{duplicateMedia.length ? ` (${duplicateMedia.length})` : ""}
           </button>
           <button type="button" className="secondary-button compact-button" onClick={() => void refresh()}>
             Refresh
@@ -1565,12 +1797,17 @@ export function PrivateLibrary({
 
       <div className="library-layout">
         <aside className="album-sidebar" aria-label="Albums">
+          <p className="sidebar-title">Library</p>
           <button
             type="button"
             className={selectedAlbum === ALL_MEDIA ? "album-nav active" : "album-nav"}
             onClick={() => changeAlbum(ALL_MEDIA)}
           >
-            All media <span>{library.media.length}</span>
+            <span className="album-nav-label">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><path d="m6.5 16 3.3-3.6 2.5 2.5 2.2-2.2 3 3.3"/><circle cx="15.5" cy="9" r="1.3"/></svg>
+              All media
+            </span>
+            <span>{library.media.length}</span>
           </button>
           {library.albums.map((album) => (
             <button
@@ -1579,7 +1816,10 @@ export function PrivateLibrary({
               key={album.uri}
               onClick={() => changeAlbum(album.uri)}
             >
-              {album.title}
+              <span className="album-nav-label">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 7.5h6l1.8 2h9.2v8.7a1.8 1.8 0 0 1-1.8 1.8H5.3a1.8 1.8 0 0 1-1.8-1.8z"/><path d="M3.5 7.5V5.8A1.8 1.8 0 0 1 5.3 4h4.2l1.8 2h7.4a1.8 1.8 0 0 1 1.8 1.8v1.7"/></svg>
+                {album.title}
+              </span>
               <span>
                 {library.memberships.filter((membership) => membership.albumUri === album.uri).length}
               </span>
@@ -1643,7 +1883,14 @@ export function PrivateLibrary({
           ) : null}
           <div className="photo-groups">
             {mediaGroups.map((group) => (
-              <section className="photo-month" key={group.key}>
+              <section
+                className="photo-month"
+                key={group.key}
+                ref={(element) => {
+                  if (element) mediaGroupElementsRef.current.set(group.key, element);
+                  else mediaGroupElementsRef.current.delete(group.key);
+                }}
+              >
                 {group.label ? <h4>{group.label}</h4> : null}
                 <div className="media-grid">
             {group.items.map((item) => {
@@ -1668,6 +1915,8 @@ export function PrivateLibrary({
                     >
                     {mediaGatewayAccess ? (
                       <PrivatePreviewImage
+                        eager={initialPreviewUris.has(item.uri)}
+                        fetchEnabled={initialPreviewBatchReady}
                         media={item}
                         mediaGatewayAccess={mediaGatewayAccess}
                       />
@@ -1700,6 +1949,7 @@ export function PrivateLibrary({
               </section>
             ))}
           </div>
+          <DateTimeline groups={mediaGroups} groupElements={mediaGroupElementsRef} />
         </div>
       </div>
       {activeMedia ? (

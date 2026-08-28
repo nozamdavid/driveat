@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { connectMediaGateway, fetchGatewayBlob, mediaGatewayId, resolveMediaGatewayUrl } from "./media-gateway";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("media gateway configuration", () => {
   it("normalizes deployed and loopback gateway origins", () => {
@@ -76,6 +79,50 @@ describe("media gateway configuration", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://media.example/v1/media/batch");
     expect((JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { items: unknown[] }).items).toHaveLength(2);
+  });
+
+  it("requests WebP previews in batches of ten", async () => {
+    const batchSizes: number[] = [];
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_input, init) => {
+      const items = (JSON.parse(String(init?.body)) as { items: Array<{ mediaId: string }> }).items;
+      batchSizes.push(items.length);
+      return new Response(Uint8Array.from(batchResponse(items.map((item) => item.mediaId))).buffer, {
+        headers: { "content-type": "application/x-atgallery-media-batch" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const access = { baseUrl: "https://media.example", token: "gateway-session", expiresAt: "2099-01-01T00:00:00.000Z", repo: "did:plc:alice", space: "at://did:web:space.example/space/type/key" };
+
+    const responses = await Promise.all(
+      Array.from({ length: 11 }, (_, index) => fetchGatewayBlob(access, `bafyblob-${index}`, "image/webp")),
+    );
+
+    expect(responses.every((response) => response.ok)).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(batchSizes).toEqual([10, 1]);
+  });
+
+  it("collects staggered preview cache misses into a full batch", async () => {
+    const batchSizes: number[] = [];
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_input, init) => {
+      const items = (JSON.parse(String(init?.body)) as { items: Array<{ mediaId: string }> }).items;
+      batchSizes.push(items.length);
+      return new Response(Uint8Array.from(batchResponse(items.map((item) => item.mediaId))).buffer, {
+        headers: { "content-type": "application/x-atgallery-media-batch" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const access = { baseUrl: "https://media.example", token: "gateway-session", expiresAt: "2099-01-01T00:00:00.000Z", repo: "did:plc:alice", space: "at://did:web:space.example/space/type/key" };
+    const pending: Array<Promise<Response>> = [];
+
+    for (let index = 0; index < 3; index += 1) pending.push(fetchGatewayBlob(access, `bafy-staggered-${index}`, "image/webp"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    for (let index = 3; index < 6; index += 1) pending.push(fetchGatewayBlob(access, `bafy-staggered-${index}`, "image/webp"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    for (let index = 6; index < 10; index += 1) pending.push(fetchGatewayBlob(access, `bafy-staggered-${index}`, "image/webp"));
+
+    expect((await Promise.all(pending)).every((response) => response.ok)).toBe(true);
+    expect(batchSizes).toEqual([10]);
   });
 
   it("fetches single original media directly through /media/:id", async () => {

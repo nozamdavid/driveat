@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
+
+const bodyFont = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const displayFont = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage" });
+const monoFont = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 const siteTitle = "AT Storage — Your files. Your account.";
 const siteDescription =
@@ -33,9 +38,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${bodyFont.variable} ${displayFont.variable} ${monoFont.variable}`}>
       <body>{children}</body>
     </html>
   );
 }
-

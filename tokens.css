@@ -1,0 +1,87 @@
+/* Hallmark · tokens: ATGallery photo library · theme: Coral adapted to forest signal */
+:root {
+  --color-paper: oklch(98.2% 0.006 115);
+  --color-paper-2: oklch(96.2% 0.009 115);
+  --color-paper-3: oklch(93.5% 0.012 115);
+  --color-surface: oklch(99.4% 0.003 115);
+  --color-surface-raised: oklch(100% 0.002 115);
+  --color-ink: oklch(20% 0.018 150);
+  --color-ink-2: oklch(31% 0.016 150);
+  --color-muted: oklch(46% 0.012 145);
+  --color-rule: oklch(88% 0.012 115);
+  --color-rule-strong: oklch(78% 0.016 120);
+  --color-accent: oklch(39% 0.092 158);
+  --color-accent-hover: oklch(33% 0.084 158);
+  --color-accent-soft: oklch(93% 0.034 155);
+  --color-accent-ink: oklch(98% 0.008 145);
+  --color-focus: oklch(80% 0.12 255);
+  --color-warning: oklch(48% 0.105 65);
+  --color-warning-soft: oklch(95% 0.035 75);
+  --color-danger: oklch(48% 0.16 28);
+  --color-danger-hover: oklch(40% 0.15 28);
+  --color-danger-soft: oklch(94% 0.045 25);
+  --color-danger-ink: oklch(37% 0.13 28);
+  --color-overlay: oklch(12% 0.018 155 / 62%);
+  --color-viewer: oklch(14% 0.014 155);
+  --color-viewer-surface: oklch(22% 0.014 155);
+  --color-viewer-ink: oklch(96% 0.006 145);
+  --color-viewer-muted: oklch(76% 0.008 145);
+  --color-viewer-rule: oklch(96% 0.006 145 / 18%);
+  --color-viewer-control: oklch(96% 0.006 145 / 10%);
+  --color-viewer-control-hover: oklch(96% 0.006 145 / 18%);
+  --color-viewer-control-active: oklch(96% 0.006 145 / 26%);
+  --color-viewer-danger: oklch(78% 0.13 28);
+  --color-shadow: oklch(20% 0.018 150 / 10%);
+  --color-shadow-strong: oklch(10% 0.014 150 / 30%);
+
+  --font-display: var(--font-bricolage), "Arial Narrow", sans-serif;
+  --font-body: var(--font-geist), "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), "SFMono-Regular", monospace;
+
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+  --space-4xl: 9rem;
+
+  --text-xs: 0.875rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1rem;
+  --text-md: 1.25rem;
+  --text-lg: 1.5625rem;
+  --text-xl: 1.953rem;
+  --text-2xl: 2.441rem;
+  --text-display: clamp(2.6rem, 5vw + 0.5rem, 4.75rem);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+
+  --rule-hair: 1px;
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.25rem;
+  --radius-pill: 999rem;
+
+  --page-gutter: clamp(1rem, 3vw, 2.5rem);
+  --app-bar-height: 4rem;
+  --toolbar-height: 5.5rem;
+  --sidebar-width: 14.5rem;
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-sticky-nav: 210;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+}

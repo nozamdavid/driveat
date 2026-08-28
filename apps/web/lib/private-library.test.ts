@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  appendAlbumsAndMembershipsToLibrary,
   appendMediaToLibrary,
   groupMediaByDay,
   findDuplicateMedia,
@@ -214,6 +215,23 @@ describe("findDuplicateMedia", () => {
 });
 
 describe("membership helpers", () => {
+  it("appends mutation responses without rebuilding the Library from record listings", () => {
+    const album = { uri: "album:new", cid: "album-cid", title: "Trips", createdAt: "2026-08-28T10:00:00Z" };
+    const membership = { uri: "membership:new", cid: "membership-cid", albumUri: album.uri, mediaUri: "media:one", position: 0, addedAt: "2026-08-28T10:01:00Z" };
+    const result = appendAlbumsAndMembershipsToLibrary(
+      {
+        albums: [],
+        media: [{ uri: "media:one", cid: "media-cid", filename: "one.jpg", mime: "image/jpeg", size: 1, previewCid: "preview-cid", createdAt: "2026-08-28T09:00:00Z" }],
+        memberships: [],
+      },
+      { albums: [album], memberships: [membership] },
+    );
+
+    expect(result.albums).toEqual([album]);
+    expect(result.memberships).toEqual([membership]);
+    expect(result.media).toHaveLength(1);
+  });
+
   it("allocates the next manual position within one album", () => {
     expect(
       nextMembershipPosition(

@@ -185,6 +185,40 @@ export function appendMediaToLibrary(
   };
 }
 
+export function appendAlbumsAndMembershipsToLibrary(
+  library: Readonly<{
+    albums: readonly LibraryAlbum[];
+    media: readonly LibraryMedia[];
+    memberships: readonly LibraryMembership[];
+  }>,
+  additions: Readonly<{
+    albums?: readonly LibraryAlbum[];
+    memberships?: readonly LibraryMembership[];
+  }>,
+): Readonly<{
+  albums: readonly LibraryAlbum[];
+  media: readonly LibraryMedia[];
+  memberships: readonly LibraryMembership[];
+}> {
+  const addedAlbumUris = new Set((additions.albums ?? []).map((album) => album.uri));
+  const addedMembershipUris = new Set(
+    (additions.memberships ?? []).map((membership) => membership.uri),
+  );
+  return {
+    media: library.media,
+    albums: [
+      ...(additions.albums ?? []),
+      ...library.albums.filter((album) => !addedAlbumUris.has(album.uri)),
+    ],
+    memberships: [
+      ...library.memberships.filter(
+        (membership) => !addedMembershipUris.has(membership.uri),
+      ),
+      ...(additions.memberships ?? []),
+    ],
+  };
+}
+
 export function nextMembershipPosition(
   memberships: readonly Pick<LibraryMembership, "albumUri" | "position">[],
   albumUri: string,

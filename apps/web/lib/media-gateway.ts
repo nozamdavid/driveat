@@ -106,24 +106,29 @@ type PreviewFetchWaiter = Readonly<{
   reject: (reason?: unknown) => void;
 }>;
 
-type PreviewFetchQueue = { waiters: PreviewFetchWaiter[]; scheduled: boolean };
+type PreviewFetchQueue = { waiters: PreviewFetchWaiter[]; timer?: ReturnType<typeof setTimeout> };
+export const MEDIA_BATCH_SIZE = 10;
+const MEDIA_BATCH_DEBOUNCE_MS = 250;
 const previewQueuesByAccess = new WeakMap<MediaGatewayAccess, PreviewFetchQueue>();
 
 function enqueuePreviewFetch(access: MediaGatewayAccess, target: PreviewFetchTarget): Promise<Response> {
-  const queue: PreviewFetchQueue = previewQueuesByAccess.get(access) ?? { waiters: [], scheduled: false };
+  const queue: PreviewFetchQueue = previewQueuesByAccess.get(access) ?? { waiters: [] };
   previewQueuesByAccess.set(access, queue);
   const completion = new Promise<Response>((resolve, reject) => queue.waiters.push({ target, resolve, reject }));
-  if (!queue.scheduled) {
-    queue.scheduled = true;
-    setTimeout(() => void flushPreviewFetchQueue(access, queue), 16);
+  if (queue.timer !== undefined) clearTimeout(queue.timer);
+  if (queue.waiters.length >= MEDIA_BATCH_SIZE) {
+    void flushPreviewFetchQueue(access, queue);
+  } else {
+    queue.timer = setTimeout(() => void flushPreviewFetchQueue(access, queue), MEDIA_BATCH_DEBOUNCE_MS);
   }
   return completion;
 }
 
 async function flushPreviewFetchQueue(access: MediaGatewayAccess, queue: PreviewFetchQueue): Promise<void> {
+  if (queue.timer !== undefined) clearTimeout(queue.timer);
   previewQueuesByAccess.delete(access);
-  for (let offset = 0; offset < queue.waiters.length; offset += 5) {
-    const waiters = queue.waiters.slice(offset, offset + 5);
+  for (let offset = 0; offset < queue.waiters.length; offset += MEDIA_BATCH_SIZE) {
+    const waiters = queue.waiters.slice(offset, offset + MEDIA_BATCH_SIZE);
     try {
       const response = await fetch(`${access.baseUrl}/v1/media/batch`, {
         method: "POST",

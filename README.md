@@ -83,3 +83,7 @@ JAVA_HOME=/path/to/jdk17 ANDROID_HOME=/path/to/android-sdk ./gradlew assembleDeb
 
 The app expects the user's personal Library Space to have already been created by the web app. A
 future iOS client will be implemented natively and is not currently part of this repository.
+
+## Disclaimer
+
+LLMs have been used to develop this experimental project

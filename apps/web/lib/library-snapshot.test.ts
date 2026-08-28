@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canUseLibrarySnapshot,
   clearLibrarySnapshots,
-  isFreshLibrarySnapshot,
   readLibrarySnapshot,
   writeLibrarySnapshot,
   type LibrarySnapshot,
@@ -43,11 +43,9 @@ const snapshot: LibrarySnapshot = {
 };
 
 describe("library snapshot", () => {
-  it("avoids another Space scan while the cached snapshot is fresh", () => {
-    const refreshedAt = "2026-08-27T12:00:00.000Z";
-    expect(isFreshLibrarySnapshot({ ...snapshot, refreshedAt }, new Date("2026-08-27T12:04:59.000Z"))).toBe(true);
-    expect(isFreshLibrarySnapshot({ ...snapshot, refreshedAt }, new Date("2026-08-27T12:05:01.000Z"))).toBe(false);
-    expect(isFreshLibrarySnapshot(snapshot, new Date("2026-08-27T12:01:00.000Z"))).toBe(false);
+  it("keeps using a cached snapshot until an explicit server refresh", () => {
+    expect(canUseLibrarySnapshot({ ...snapshot, refreshedAt: "2020-01-01T00:00:00.000Z" })).toBe(true);
+    expect(canUseLibrarySnapshot(undefined)).toBe(false);
   });
 
   it("round-trips a snapshot per did and space", () => {

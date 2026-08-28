@@ -10,17 +10,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.time.Instant
-import kotlinx.coroutines.delay
 
 class AtProtoApi(private val context: Context) {
   private val oauth = AtProtoOAuth(context)
   private val sessionStore = SessionStore(context)
+  private val backupStore = NativeBackupStore(context)
   private var cachedSpace: String? = null
   private var cachedFingerprints: MutableSet<String>? = null
 
   fun clearCache() {
     cachedSpace = null
     cachedFingerprints = null
+    backupStore.clearRemoteCache()
   }
 
   fun fingerprintsForMedia(media: LocalMedia): Set<String> {
@@ -31,6 +32,7 @@ class AtProtoApi(private val context: Context) {
     val session = sessionStore.load() ?: error("Sign in before checking photos")
     val space = cachedSpace ?: personalSpace(session).also { cachedSpace = it }
     val result = mutableSetOf<String>()
+
     var cursor: String? = null
     do {
       val builder = Uri.parse("${session.resourceServer}/xrpc/com.atproto.space.listRecords")
@@ -39,6 +41,7 @@ class AtProtoApi(private val context: Context) {
         .appendQueryParameter("repo", session.did)
         .appendQueryParameter("collection", AtProtoConfig.LIBRARY_MEDIA)
         .appendQueryParameter("limit", "100")
+        .appendQueryParameter("reverse", "true")
       cursor?.let { builder.appendQueryParameter("cursor", it) }
       val json = getJson(builder.build().toString())
       val records = json.optJSONArray("records") ?: JSONArray()
@@ -59,9 +62,11 @@ class AtProtoApi(private val context: Context) {
       }
       progress?.invoke(result.size)
       cursor = json.optString("cursor").takeIf(String::isNotBlank)
-      if (cursor != null) delay(1000)
     } while (cursor != null)
+
     cachedFingerprints = result
+    backupStore.setRemoteFingerprints(result)
+    backupStore.clearRemoteWatermark()
     return result
   }
 

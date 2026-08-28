@@ -1,6 +1,6 @@
 "use client";
 
-import { ROLLING_QUOTA_LIMITS } from "@atgallery/domain";
+import { LIBRARY_LIMITS, ROLLING_QUOTA_LIMITS } from "@atgallery/domain";
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import {
@@ -16,7 +16,7 @@ import {
 import { eligibleAlbumsForTargets, unmemberedTargetUris } from "../../lib/album-picker";
 import { errorMessage } from "../../lib/error-message";
 import {
-  isFreshLibrarySnapshot,
+  canUseLibrarySnapshot,
   readLibrarySnapshot,
   writeLibrarySnapshot,
   type LibraryWatermarks,
@@ -38,6 +38,7 @@ import {
 import { useInView } from "../../lib/use-in-view";
 import {
   groupMediaByDay,
+  appendMediaToLibrary,
   findDuplicateMedia,
   indexLibraryRecords,
   type DuplicateMediaGroup,
@@ -56,11 +57,21 @@ import {
 } from "../../lib/library-index";
 import { listAllSpaceRecords } from "../../lib/space-records";
 import { formatBytes, privateLibraryStorageBytes } from "../../lib/storage-total";
-import { recentTransferEvents, transferQuotaStatus, type TransferQuotaStatus } from "../../lib/transfer-quota";
-import { PrivateImageUpload } from "./private-image-upload";
+import {
+  readCachedTransferEvents,
+  recentTransferEvents,
+  transferQuotaStatus,
+  writeCachedTransferEvents,
+  type TransferQuotaStatus,
+} from "../../lib/transfer-quota";
+import {
+  PrivateImageUpload,
+  type PrivateImageUploadResult,
+} from "./private-image-upload";
 
 type Props = Readonly<{
   albumCollection: string;
+  blobUploadLimit?: number | undefined;
   libraryIndexCollection?: string | undefined;
   libraryMediaCollection: string;
   mediaGatewayAccess?: MediaGatewayAccess | undefined;
@@ -825,6 +836,7 @@ function DuplicateReviewDialog({
 
 export function PrivateLibrary({
   albumCollection,
+  blobUploadLimit,
   libraryIndexCollection,
   libraryMediaCollection,
   mediaGatewayAccess,
@@ -836,6 +848,9 @@ export function PrivateLibrary({
   // Hydrate from the last successful refresh so a reload renders instantly
   // and revalidates against the Space in the background.
   const [initialSnapshot] = useState(() => readLibrarySnapshot(session.did, spaceUri));
+  const [initialTransferEvents] = useState(() =>
+    readCachedTransferEvents(session.did, spaceUri),
+  );
   const [library, setLibrary] = useState<LibraryState>(
     initialSnapshot
       ? { albums: initialSnapshot.albums, media: initialSnapshot.media, memberships: initialSnapshot.memberships }
@@ -868,7 +883,11 @@ export function PrivateLibrary({
   const [loading, setLoading] = useState(!initialSnapshot);
   const [mutating, setMutating] = useState(false);
   const [error, setError] = useState<string>();
-  const [transferStatus, setTransferStatus] = useState<TransferQuotaStatus>();
+  const [transferStatus, setTransferStatus] = useState<TransferQuotaStatus | undefined>(() =>
+    initialTransferEvents
+      ? transferQuotaStatus(initialTransferEvents, new Date())
+      : undefined,
+  );
   const [activeMediaUri, setActiveMediaUri] = useState<string>();
   const [albumPendingDeleteUri, setAlbumPendingDeleteUri] = useState<string>();
   const [selectedUris, setSelectedUris] = useState<ReadonlySet<string>>(EMPTY_SELECTION);
@@ -940,8 +959,8 @@ export function PrivateLibrary({
     [library.media],
   );
 
-  const refresh = useCallback(async (options: Readonly<{ preferFreshSnapshot?: boolean }> = {}) => {
-    if (options.preferFreshSnapshot && isFreshLibrarySnapshot(initialSnapshot)) {
+  const refresh = useCallback(async (options: Readonly<{ preferCachedSnapshot?: boolean }> = {}) => {
+    if (options.preferCachedSnapshot && canUseLibrarySnapshot(initialSnapshot)) {
       setLoading(false);
       return;
     }
@@ -1045,6 +1064,7 @@ export function PrivateLibrary({
         watermarksRef.current = nextWatermarks;
         watermarkRef.current = nextWatermarks.media;
         setTransferStatus(transferQuotaStatus(transferEvents, now));
+        writeCachedTransferEvents(session.did, spaceUri, transferEvents);
       }
 
       if (refreshGeneration !== refreshGenerationRef.current) return;
@@ -1085,7 +1105,7 @@ export function PrivateLibrary({
 
   // The deferred timeout lets first paint/hydration finish before the network fan-out begins.
   useEffect(() => {
-    const timeout = window.setTimeout(() => void refresh({ preferFreshSnapshot: true }), 0);
+    const timeout = window.setTimeout(() => void refresh({ preferCachedSnapshot: true }), 0);
     return () => window.clearTimeout(timeout);
   }, [refresh]);
 
@@ -1188,6 +1208,17 @@ export function PrivateLibrary({
         },
       );
     }
+  }
+
+  async function acceptUploadedMedia(result: PrivateImageUploadResult) {
+    const agent = new Agent(session);
+    await cachePreviewBlob(result.media.previewCid, result.preview);
+    if (result.media.originalCid) {
+      await setCachedOriginal(result.media.originalCid, result.original);
+    }
+    writeCachedTransferEvents(session.did, spaceUri, result.transferEvents);
+    setTransferStatus(transferQuotaStatus(result.transferEvents, new Date()));
+    await commitLocalLibrary(agent, appendMediaToLibrary(libraryRef.current, result.media));
   }
 
   async function createAlbum(event: FormEvent<HTMLFormElement>) {
@@ -1474,13 +1505,15 @@ export function PrivateLibrary({
           >
             <summary>Upload</summary>
             <PrivateImageUpload
+              blobUploadLimit={blobUploadLimit}
+              libraryStorageBytes={libraryStorageBytes}
               libraryMediaCollection={libraryMediaCollection}
               session={session}
               spaceUri={spaceUri}
               transferEventCollection={transferEventCollection}
-              onUploaded={() => {
+              onUploaded={async (result) => {
                 setUploadDrawerOpen(false);
-                void refresh();
+                await acceptUploadedMedia(result);
               }}
             />
           </details>
@@ -1498,8 +1531,9 @@ export function PrivateLibrary({
         </div>
       </div>
 
-      {transferStatus ? (
-        <section className="transfer-quota" aria-label="Rolling 24-hour transfer allowance">
+      <section className="transfer-quota" aria-label="Upload and Library limits">
+        {transferStatus ? (
+          <>
           <div className="transfer-quota-copy">
             <strong>{formatBytes(transferStatus.quota.remaining.transferredBytes)} remaining</strong>
             <span>
@@ -1517,8 +1551,17 @@ export function PrivateLibrary({
               ? ` · next capacity returns ${formatRecoveryTime(transferStatus.nextRecoveryAt)}`
               : " · full allowance available"}
           </p>
-        </section>
-      ) : null}
+          </>
+        ) : (
+          <div className="transfer-quota-copy">
+            <strong>Rolling 24-hour transfer allowance</strong>
+            <span>Refresh to calculate current transfer usage and recovery time.</span>
+          </div>
+        )}
+        <p className="library-capacity-copy">
+          Separate permanent Library limit: {formatBytes(libraryStorageBytes)} of {formatBytes(LIBRARY_LIMITS.storedBytes)} used. Deleting media returns Library capacity, but the rolling 24-hour transfer usage remains until it expires.
+        </p>
+      </section>
 
       <div className="library-layout">
         <aside className="album-sidebar" aria-label="Albums">
@@ -1556,15 +1599,19 @@ export function PrivateLibrary({
           </form>
           <section className="sidebar-storage" aria-label="Library storage">
             <h4>Library storage</h4>
-            <strong>{formatBytes(libraryStorageBytes)}</strong>
+            <strong>{formatBytes(libraryStorageBytes)} / {formatBytes(LIBRARY_LIMITS.storedBytes)}</strong>
             <span>{library.media.length} items</span>
           </section>
-          <div className="sidebar-privacy-notice" role="note">
-            <p>
+          <div className="sidebar-notices">
+            <div className="sidebar-notice sidebar-notice-danger" role="alert">
+              <strong>⚠️ Temporary experiment:</strong> This Library operates on the Spaces-alpha PDS.
+              All data there will eventually be deleted. Do not rely on this experiment for important or sole backups.
+            </div>
+            <div className="sidebar-notice" role="note">
               <strong>⚠️ Note on encryption:</strong> Spaces provide access control rather than confidentiality.
               Data in a Space is readable by any user or application granted access to that Space and is not encrypted.
               We may add encryption ourselves in the future.
-            </p>
+            </div>
           </div>
         </aside>
 

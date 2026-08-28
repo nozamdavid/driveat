@@ -14,6 +14,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { errorMessage } from "../../lib/error-message";
 import { clearLibrarySnapshots } from "../../lib/library-snapshot";
+import { clearCachedTransferEvents } from "../../lib/transfer-quota";
 import {
   connectMediaGateway,
   resolveMediaGatewayUrl,
@@ -27,6 +28,7 @@ import {
 import { ensureAccountRecord } from "../../lib/account-record";
 import { ATGALLERY_ALPHA_PDS } from "../../lib/oauth-config";
 import { clearPreviewCache } from "../../lib/preview-cache";
+import { formatBlobLimit, parsePdsBlobUploadLimit } from "../../lib/pds-blob-limit";
 import { PrivateLibrary } from "./private-library";
 
 type ViewState =
@@ -48,6 +50,10 @@ type SessionDiagnostics = Readonly<{
   grantedScope: string;
   requestedScope: string;
 }>;
+
+type BlobLimitState =
+  | Readonly<{ status: "loading" | "unavailable" }>
+  | Readonly<{ bytes: number; status: "available" }>;
 
 function personalSpaceMessage(space: PersonalSpaceView): string {
   switch (space.status) {
@@ -86,6 +92,7 @@ export function OAuthPanel() {
   const [sessionDiagnostics, setSessionDiagnostics] = useState<SessionDiagnostics>();
   const [mediaGatewayAccess, setMediaGatewayAccess] = useState<MediaGatewayAccess>();
   const [gatewayError, setGatewayError] = useState<string>();
+  const [blobLimit, setBlobLimit] = useState<BlobLimitState>({ status: "loading" });
 
   useEffect(() => {
     let active = true;
@@ -154,6 +161,24 @@ export function OAuthPanel() {
         if (active) setPersonalSpace({ status: "probe-failed" });
       });
 
+    return () => {
+      active = false;
+    };
+  }, [view]);
+
+  useEffect(() => {
+    if (view.status !== "authenticated") return;
+    let active = true;
+    const agent = new Agent(view.session);
+    void agent.com.atproto.server.describeServer()
+      .then((response) => {
+        if (!active) return;
+        const bytes = parsePdsBlobUploadLimit(response.data.blobUploadLimit);
+        setBlobLimit(bytes ? { bytes, status: "available" } : { status: "unavailable" });
+      })
+      .catch(() => {
+        if (active) setBlobLimit({ status: "unavailable" });
+      });
     return () => {
       active = false;
     };
@@ -286,6 +311,7 @@ export function OAuthPanel() {
       await client.revoke(view.session.did);
       // Local caches hold no value once the session is gone; clearing is best-effort.
       clearLibrarySnapshots();
+      clearCachedTransferEvents();
       void clearPreviewCache();
       setView({ status: "anonymous" });
     } catch (error: unknown) {
@@ -315,7 +341,12 @@ export function OAuthPanel() {
             </div>
           </div>
           <div className="photo-account">
-            <span className="connected-did" title={view.session.did}>{view.session.did}</span>
+            <span className="account-identity">
+              <span className="connected-did" title={view.session.did}>{view.session.did}</span>
+              <span className="blob-limit">
+                (blob limit: {blobLimit.status === "available" ? formatBlobLimit(blobLimit.bytes) : blobLimit.status === "loading" ? "checking…" : "unavailable"})
+              </span>
+            </span>
             <button type="button" className="secondary-button compact-button" disabled={submitting} onClick={signOut}>
               {submitting ? "Disconnecting…" : "Disconnect"}
             </button>
@@ -359,6 +390,7 @@ export function OAuthPanel() {
         oauthPermissionConfiguration.mode === "gallery" ? (
           <PrivateLibrary
             albumCollection={oauthPermissionConfiguration.albumCollection}
+            blobUploadLimit={blobLimit.status === "available" ? blobLimit.bytes : undefined}
             libraryIndexCollection={oauthPermissionConfiguration.libraryIndexCollection}
             libraryMediaCollection={oauthPermissionConfiguration.libraryMediaCollection}
             mediaGatewayAccess={mediaGatewayAccess}

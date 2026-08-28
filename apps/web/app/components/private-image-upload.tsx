@@ -1,6 +1,6 @@
 "use client";
 
-import { calculateRollingQuota } from "@atgallery/domain";
+import { calculateRollingQuota, type TransferEvent } from "@atgallery/domain";
 import { Agent } from "@atproto/api";
 import type { OAuthSession } from "@atproto/oauth-client-browser";
 import { type FormEvent, useState } from "react";
@@ -10,13 +10,28 @@ import {
   preparePrivateImage,
   PRIVATE_IMAGE_MIME_TYPES,
 } from "../../lib/private-image";
-import { recentTransferEvents } from "../../lib/transfer-quota";
+import { readCachedTransferEvents, recentTransferEvents } from "../../lib/transfer-quota";
+import { effectiveLibraryBlobLimit, formatBlobLimit } from "../../lib/pds-blob-limit";
+import { libraryUploadFits } from "../../lib/storage-total";
+import {
+  indexLibraryRecords,
+  type LibraryMedia,
+} from "../../lib/private-library";
+
+export type PrivateImageUploadResult = Readonly<{
+  media: LibraryMedia;
+  original: File;
+  preview: Blob;
+  transferEvents: readonly TransferEvent[];
+}>;
 
 type UploadStage = "idle" | "preparing" | "checking-quota" | "uploading" | "writing";
 
 type Props = Readonly<{
+  blobUploadLimit?: number | undefined;
+  libraryStorageBytes: number;
   libraryMediaCollection: string;
-  onUploaded?: () => Promise<void> | void;
+  onUploaded?: (result: PrivateImageUploadResult) => Promise<void> | void;
   session: OAuthSession;
   spaceUri: string;
   transferEventCollection: string;
@@ -38,6 +53,8 @@ function messageForStage(stage: UploadStage): string | undefined {
 }
 
 export function PrivateImageUpload({
+  blobUploadLimit,
+  libraryStorageBytes,
   libraryMediaCollection,
   onUploaded,
   session,
@@ -58,18 +75,27 @@ export function PrivateImageUpload({
     setStage("preparing");
 
     try {
-      const prepared = await preparePrivateImage(file);
+      if (!blobUploadLimit) throw new Error("The PDS did not advertise a usable blob upload limit.");
+      const effectiveLimit = effectiveLibraryBlobLimit(blobUploadLimit);
+      if (!libraryUploadFits(libraryStorageBytes, [file.size])) {
+        throw new Error("This upload would exceed the permanent 2 GiB Library storage limit.");
+      }
+      const prepared = await preparePrivateImage(file, effectiveLimit);
+      if (!libraryUploadFits(libraryStorageBytes, [file.size, prepared.preview.size])) {
+        throw new Error("This upload would exceed the permanent 2 GiB Library storage limit.");
+      }
       const agent = new Agent(session);
       const now = new Date();
 
       setStage("checking-quota");
-      const events = await recentTransferEvents(
-        agent,
-        spaceUri,
-        session.did,
-        transferEventCollection,
-        now,
-      );
+      const events = readCachedTransferEvents(session.did, spaceUri, now) ??
+        await recentTransferEvents(
+          agent,
+          spaceUri,
+          session.did,
+          transferEventCollection,
+          now,
+        );
       const quota = calculateRollingQuota(events, now, {
         blobOperations: 2,
         items: 1,
@@ -89,6 +115,27 @@ export function PrivateImageUpload({
       const original = originalResponse.data.blob;
       const preview = previewResponse.data.blob;
       const createdAt = now.toISOString();
+      const mediaRecord = {
+        $type: libraryMediaCollection,
+        formatVersion: 1,
+        mediaKind: "image",
+        original,
+        originalFilename: file.name,
+        originalMime: prepared.mime,
+        originalSize: file.size,
+        preview,
+        sha256: prepared.sha256,
+        width: prepared.width,
+        height: prepared.height,
+        createdAt,
+      };
+      const transferEvent: TransferEvent = {
+        operation: "private-ingest",
+        transferredBytes: original.size + preview.size,
+        blobOperations: 2,
+        items: 1,
+        completedAt: now,
+      };
 
       setStage("writing");
       const writeResponse = await agent.com.atproto.space.applyWrites({
@@ -98,20 +145,7 @@ export function PrivateImageUpload({
           {
             $type: "com.atproto.space.applyWrites#create",
             collection: libraryMediaCollection,
-            value: {
-              $type: libraryMediaCollection,
-              formatVersion: 1,
-              mediaKind: "image",
-              original,
-              originalFilename: file.name,
-              originalMime: prepared.mime,
-              originalSize: file.size,
-              preview,
-              sha256: prepared.sha256,
-              width: prepared.width,
-              height: prepared.height,
-              createdAt,
-            },
+            value: mediaRecord,
           },
           {
             $type: "com.atproto.space.applyWrites#create",
@@ -133,10 +167,23 @@ export function PrivateImageUpload({
       if (!result || !("uri" in result) || !("cid" in result)) {
         throw new Error("The PDS created the records but did not return the media record reference.");
       }
+      const uploadedMedia = indexLibraryRecords({
+        media: [{ uri: result.uri, cid: result.cid, value: mediaRecord }],
+        albums: [],
+        memberships: [],
+      }).media[0];
+      if (!uploadedMedia) {
+        throw new Error("The uploaded media record could not be added to the local Library.");
+      }
 
       setFile(undefined);
       form.reset();
-      await onUploaded?.();
+      await onUploaded?.({
+        media: uploadedMedia,
+        original: file,
+        preview: prepared.preview,
+        transferEvents: [...events, transferEvent],
+      });
     } catch (caught: unknown) {
       setError(errorMessage(caught, "The private image upload failed."));
     } finally {
@@ -152,12 +199,14 @@ export function PrivateImageUpload({
         Space. Your PDS operator can read them; other PDS users cannot.
       </p>
       <form onSubmit={upload}>
-        <label htmlFor="private-image">JPEG, PNG, WebP, GIF, or AVIF · maximum 25 MiB</label>
+        <label htmlFor="private-image">
+          JPEG, PNG, WebP, GIF, or AVIF · maximum {blobUploadLimit ? formatBlobLimit(effectiveLibraryBlobLimit(blobUploadLimit)) : "checking PDS…"}
+        </label>
         <input
           id="private-image"
           type="file"
           accept={PRIVATE_IMAGE_MIME_TYPES.join(",")}
-          disabled={busy}
+          disabled={busy || !blobUploadLimit}
           onChange={(event) => setFile(event.target.files?.[0])}
         />
         <button type="submit" disabled={!file || busy}>

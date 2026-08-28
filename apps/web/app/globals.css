@@ -319,6 +319,20 @@ button:disabled {
   white-space: nowrap;
 }
 
+.account-identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.blob-limit {
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
 .library-setup {
   width: min(36rem, calc(100vw - 2rem));
   margin: clamp(4rem, 12vw, 9rem) auto;
@@ -543,6 +557,11 @@ button:disabled {
   font-size: 0.76rem;
 }
 
+.transfer-quota .library-capacity-copy {
+  grid-column: 1 / -1;
+  white-space: normal;
+}
+
 .transfer-quota p {
   margin: 0;
   white-space: nowrap;
@@ -653,8 +672,13 @@ button:disabled {
   font-size: 0.76rem;
 }
 
-.sidebar-privacy-notice {
+.sidebar-notices {
   margin-top: 1.5rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.sidebar-notice {
   padding: 0.75rem 0.85rem;
   border-left: 3px solid var(--rule);
   border-radius: 0 0.4rem 0.4rem 0;
@@ -664,13 +688,19 @@ button:disabled {
   line-height: 1.45;
 }
 
-.sidebar-privacy-notice strong {
+.sidebar-notice strong {
   color: var(--ink);
   display: inline;
 }
 
-.sidebar-privacy-notice p {
-  margin: 0;
+.sidebar-notice-danger {
+  border-left-color: #c94a43;
+  background: #f8deda;
+  color: #762923;
+}
+
+.sidebar-notice-danger strong {
+  color: #762923;
 }
 
 .media-browser {
@@ -1614,6 +1644,10 @@ footer p {
 
   .photo-account .connected-did {
     max-width: 10rem;
+  }
+
+  .account-identity {
+    align-items: flex-start;
   }
 
   .photo-app-brand div > span {

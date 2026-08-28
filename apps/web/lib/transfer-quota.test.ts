@@ -1,8 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { recentTransferEvents, transferQuotaStatus } from "./transfer-quota";
+import {
+  readCachedTransferEvents,
+  recentTransferEvents,
+  transferQuotaStatus,
+  writeCachedTransferEvents,
+  type TransferEventsStorage,
+} from "./transfer-quota";
 
 describe("transferQuotaStatus", () => {
+  it("restores cached events and drops those outside the rolling window", () => {
+    const entries = new Map<string, string>();
+    const storage: TransferEventsStorage = {
+      get length() { return entries.size; },
+      getItem: (key) => entries.get(key) ?? null,
+      key: (index) => Array.from(entries.keys())[index] ?? null,
+      removeItem: (key) => void entries.delete(key),
+      setItem: (key, value) => void entries.set(key, value),
+    };
+    writeCachedTransferEvents("did:plc:test", "at://space/test", [
+      { blobOperations: 2, completedAt: new Date("2026-08-27T11:00:00Z"), items: 1, operation: "private-ingest", transferredBytes: 10 },
+      { blobOperations: 2, completedAt: new Date("2026-08-26T10:00:00Z"), items: 1, operation: "private-ingest", transferredBytes: 20 },
+    ], storage);
+
+    expect(readCachedTransferEvents(
+      "did:plc:test",
+      "at://space/test",
+      new Date("2026-08-27T12:00:00Z"),
+      storage,
+    )).toEqual([
+      { blobOperations: 2, completedAt: new Date("2026-08-27T11:00:00Z"), items: 1, operation: "private-ingest", transferredBytes: 10 },
+    ]);
+  });
+
   it("reports rolling usage and the first time capacity returns", () => {
     const now = new Date("2026-08-21T12:00:00.000Z");
     const status = transferQuotaStatus(

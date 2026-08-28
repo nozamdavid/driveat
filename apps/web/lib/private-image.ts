@@ -54,11 +54,14 @@ export function sniffImageMime(bytes: Uint8Array): PrivateImageMime | undefined 
   return undefined;
 }
 
-export async function validatePrivateImageFile(file: File): Promise<PrivateImageMime> {
+export async function validatePrivateImageFile(
+  file: File,
+  maxOriginalBytes = MEDIA_LIMITS.imageOriginalBytes,
+): Promise<PrivateImageMime> {
   if (file.size <= 0) throw new Error("Choose a non-empty image file.");
-  if (file.size > MEDIA_LIMITS.imageOriginalBytes) {
+  if (file.size > maxOriginalBytes) {
     throw new Error(
-      `Private image originals must not exceed ${MEDIA_LIMITS.imageOriginalBytes / MEBIBYTE} MiB.`,
+      `Private image originals must not exceed ${maxOriginalBytes / MEBIBYTE} MiB.`,
     );
   }
   if (!acceptedMimes.has(file.type)) {
@@ -99,8 +102,11 @@ async function decodeImage(file: File): Promise<HTMLImageElement> {
   }
 }
 
-export async function preparePrivateImage(file: File): Promise<PreparedPrivateImage> {
-  const mime = await validatePrivateImageFile(file);
+export async function preparePrivateImage(
+  file: File,
+  maxOriginalBytes = MEDIA_LIMITS.imageOriginalBytes,
+): Promise<PreparedPrivateImage> {
+  const mime = await validatePrivateImageFile(file, maxOriginalBytes);
   const image = await decodeImage(file);
   const width = image.naturalWidth;
   const height = image.naturalHeight;

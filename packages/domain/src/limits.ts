@@ -17,6 +17,10 @@ export const ROLLING_QUOTA_LIMITS = Object.freeze({
   transferredBytes: GIBIBYTE,
 });
 
+export const LIBRARY_LIMITS = Object.freeze({
+  storedBytes: 2 * GIBIBYTE,
+});
+
 export const OPERATIONAL_LIMITS = Object.freeze({
   albumItems: 1_000,
   concurrentBlobUploads: 2,
@@ -24,4 +28,3 @@ export const OPERATIONAL_LIMITS = Object.freeze({
   directFallbackRecords: 5_000,
   selectedFilesPerBatch: 20,
 });
-

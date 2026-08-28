@@ -30,7 +30,10 @@ export type LibrarySnapshot = Readonly<{
 }>;
 
 const SNAPSHOT_KEY = "atgallery.library.snapshot.v1";
-export const LIBRARY_SNAPSHOT_FRESHNESS_MS = 5 * 60 * 1000;
+
+export function canUseLibrarySnapshot(snapshot: LibrarySnapshot | undefined): snapshot is LibrarySnapshot {
+  return snapshot !== undefined;
+}
 
 function storageKey(did: string, spaceUri: string): string {
   return `${SNAPSHOT_KEY}.${did}.${spaceUri}`;
@@ -70,15 +73,6 @@ function validSnapshot(value: unknown): LibrarySnapshot | undefined {
     ...(typeof record.watermark === "string" ? { watermark: record.watermark } : {}),
     ...(parsedWatermarks ? { watermarks: parsedWatermarks } : {}),
   };
-}
-
-export function isFreshLibrarySnapshot(
-  snapshot: LibrarySnapshot | undefined,
-  now = new Date(),
-): boolean {
-  if (!snapshot?.refreshedAt) return false;
-  const refreshedAt = Date.parse(snapshot.refreshedAt);
-  return Number.isFinite(refreshedAt) && now.getTime() - refreshedAt <= LIBRARY_SNAPSHOT_FRESHNESS_MS;
 }
 
 export function readLibrarySnapshot(

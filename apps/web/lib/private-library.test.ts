@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  appendMediaToLibrary,
   groupMediaByDay,
   findDuplicateMedia,
   indexLibraryRecords,
@@ -9,6 +10,26 @@ import {
   nextMembershipPosition,
   recordKeyFromAtUri,
 } from "./private-library";
+
+describe("appendMediaToLibrary", () => {
+  it("adds an uploaded media item locally without replacing albums or memberships", () => {
+    const uploaded = {
+      uri: "at://space/did/media/new",
+      cid: "new-cid",
+      filename: "new.jpg",
+      mime: "image/jpeg",
+      size: 10,
+      previewCid: "preview-new",
+      createdAt: "2026-08-27T12:00:00Z",
+    };
+    const albums = [{ uri: "at://space/did/albums/a", cid: "a", title: "A", createdAt: "2026-08-01T00:00:00Z" }];
+    const result = appendMediaToLibrary({ albums, media: [], memberships: [] }, uploaded);
+
+    expect(result.media).toEqual([uploaded]);
+    expect(result.albums).toBe(albums);
+    expect(result.memberships).toEqual([]);
+  });
+});
 
 describe("indexLibraryRecords", () => {
   it("keeps valid media, albums, and memberships while ignoring malformed records", () => {

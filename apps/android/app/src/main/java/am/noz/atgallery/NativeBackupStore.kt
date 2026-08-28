@@ -19,6 +19,15 @@ class NativeBackupStore(context: Context) {
   fun error(message: String) { prefs.edit().putString("last_error", message).putLong("last_attempt", System.currentTimeMillis()).apply() }
   fun backedCount() = backed.size
   fun skippedCount() = skipped.size
+
+  fun getRemoteFingerprints(): Set<String> = prefs.getStringSet("remote_fingerprints", emptySet()) ?: emptySet()
+  fun setRemoteFingerprints(fingerprints: Set<String>) {
+    prefs.edit().putStringSet("remote_fingerprints", fingerprints).apply()
+  }
+  fun clearRemoteWatermark() { prefs.edit().remove("remote_watermark").apply() }
+  fun clearRemoteCache() {
+    prefs.edit().remove("remote_fingerprints").remove("remote_watermark").apply()
+  }
 }
 
 private fun String.isIncompatibleReason() =

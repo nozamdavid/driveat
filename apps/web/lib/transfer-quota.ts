@@ -10,11 +10,93 @@ import { nonNegativeInteger } from "./private-library";
 import { listAllSpaceRecords } from "./space-records";
 
 const MAX_TRANSFER_EVENT_PAGES = 10;
+const TRANSFER_EVENTS_CACHE_KEY = "atgallery.transfer-events.v1";
+
+export type TransferEventsStorage = Pick<
+  Storage,
+  "getItem" | "key" | "length" | "removeItem" | "setItem"
+>;
 
 const DOMAIN_OPERATION: Readonly<Record<string, TransferEvent["operation"]>> = {
   ingest: "private-ingest",
   publish: "public-publication",
 };
+
+function transferEventsCacheKey(did: string, space: string): string {
+  return `${TRANSFER_EVENTS_CACHE_KEY}.${did}.${space}`;
+}
+
+function defaultStore(): TransferEventsStorage | undefined {
+  return (globalThis as { localStorage?: TransferEventsStorage }).localStorage;
+}
+
+export function readCachedTransferEvents(
+  did: string,
+  space: string,
+  now = new Date(),
+  store?: TransferEventsStorage,
+): readonly TransferEvent[] | undefined {
+  try {
+    const raw = (store ?? defaultStore())?.getItem(transferEventsCacheKey(did, space));
+    if (!raw) return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return undefined;
+    const cutoff = now.getTime() - ROLLING_QUOTA_WINDOW_MS;
+    const events: TransferEvent[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const value = item as Record<string, unknown>;
+      const completedAt = typeof value.completedAt === "string" ? new Date(value.completedAt) : undefined;
+      const blobOperations = nonNegativeInteger(value.blobOperations);
+      const items = nonNegativeInteger(value.items);
+      const transferredBytes = nonNegativeInteger(value.transferredBytes);
+      const operation = value.operation;
+      if (
+        !completedAt ||
+        !Number.isFinite(completedAt.getTime()) ||
+        completedAt.getTime() < cutoff ||
+        completedAt.getTime() > now.getTime() ||
+        blobOperations === undefined ||
+        items === undefined ||
+        transferredBytes === undefined ||
+        (operation !== "private-ingest" && operation !== "public-publication")
+      ) continue;
+      events.push({ blobOperations, completedAt, items, operation, transferredBytes });
+    }
+    return events;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeCachedTransferEvents(
+  did: string,
+  space: string,
+  events: readonly TransferEvent[],
+  store?: TransferEventsStorage,
+): void {
+  try {
+    (store ?? defaultStore())?.setItem(
+      transferEventsCacheKey(did, space),
+      JSON.stringify(events.map((event) => ({ ...event, completedAt: event.completedAt.toISOString() }))),
+    );
+  } catch {
+    // Cache persistence is advisory; an explicit refresh can rebuild it.
+  }
+}
+
+export function clearCachedTransferEvents(store?: TransferEventsStorage): void {
+  try {
+    const resolved = store ?? defaultStore();
+    if (!resolved) return;
+    for (let index = resolved.length - 1; index >= 0; index -= 1) {
+      const key = resolved.key(index);
+      if (key?.startsWith(`${TRANSFER_EVENTS_CACHE_KEY}.`)) resolved.removeItem(key);
+    }
+  } catch {
+    // Clearing is best-effort during sign-out.
+  }
+}
 
 export async function recentTransferEvents(
   agent: Agent,

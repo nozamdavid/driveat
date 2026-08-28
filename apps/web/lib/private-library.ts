@@ -8,6 +8,7 @@ export type LibraryMedia = Readonly<{
   originalCid?: string;
   size: number;
   previewCid: string;
+  previewSize?: number;
   metadata?: Readonly<Record<string, unknown>>;
   width?: number;
   height?: number;
@@ -79,6 +80,7 @@ function media(record: RawSpaceRecord): LibraryMedia | undefined {
   const mime = string(value?.originalMime);
   const size = nonNegativeInteger(value?.originalSize);
   const previewCid = blobCid(value?.preview);
+  const previewSize = nonNegativeInteger(object(value?.preview)?.size);
   const originalCid = blobCid(value?.original);
   const metadata = object(value?.extractedMetadata);
   const createdAt = string(value?.createdAt);
@@ -94,6 +96,7 @@ function media(record: RawSpaceRecord): LibraryMedia | undefined {
     ...(originalCid ? { originalCid } : {}),
     size,
     previewCid,
+    ...(previewSize !== undefined ? { previewSize } : {}),
     ...(metadata ? { metadata } : {}),
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
@@ -161,6 +164,24 @@ export function removeMediaFromLibrary(
     memberships: library.memberships.filter(
       (membership) => !removedUris.has(membership.mediaUri),
     ),
+  };
+}
+
+export function appendMediaToLibrary(
+  library: Readonly<{
+    albums: readonly LibraryAlbum[];
+    media: readonly LibraryMedia[];
+    memberships: readonly LibraryMembership[];
+  }>,
+  uploaded: LibraryMedia,
+): Readonly<{
+  albums: readonly LibraryAlbum[];
+  media: readonly LibraryMedia[];
+  memberships: readonly LibraryMembership[];
+}> {
+  return {
+    ...library,
+    media: [uploaded, ...library.media.filter((item) => item.uri !== uploaded.uri)],
   };
 }
 
